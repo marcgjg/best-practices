@@ -12,14 +12,14 @@ st.set_page_config(
 )
 
 # ── Best Practice topics (renamed from "Categories") ─────────────────────────
-TOPICS = [
+CONCEPTS = [
     "Risk-Free Rate",
     "Cost of Debt",
     "Cost of Equity",
     "Cost of Capital",
 ]
 
-TOPIC_COLOURS = {
+CONCEPT_COLOURS = {
     "Risk-Free Rate":  "#2e7d52",
     "Cost of Debt":    "#b94040",
     "Cost of Equity":  "#c8952a",
@@ -90,8 +90,7 @@ if "student_email" not in st.session_state: st.session_state.student_email = ""
 if "student_class" not in st.session_state: st.session_state.student_class = CLASSES[0]
 if "editing_id"    not in st.session_state: st.session_state.editing_id    = None
 if "add_topic"     not in st.session_state: st.session_state.add_topic     = "Risk-Free Rate"
-if "add_practice"  not in st.session_state: st.session_state.add_practice  = ""
-if "add_rationale" not in st.session_state: st.session_state.add_rationale = ""
+if "add_content" not in st.session_state: st.session_state.add_content = ""
 # FIX 1 — duplicate-submit guard
 if "submitting"    not in st.session_state: st.session_state.submitting    = False
 if "confirm_delete" not in st.session_state: st.session_state.confirm_delete = None
@@ -189,11 +188,11 @@ with st.sidebar:
                 "**cost of capital**. Add new practices, refine existing ones, "
                 "and track everyone's contributions.")
     st.markdown("---")
-    st.markdown("### 🏷️ Best Practice")   # FIX 4 — renamed from "Categories"
-    for topic, colour in TOPIC_COLOURS.items():
+    st.markdown("### 🏷️ Concept")
+    for concept, colour in CONCEPT_COLOURS.items():
         st.markdown(
             f"<span style='display:inline-block;width:10px;height:10px;"
-            f"background:{colour};border-radius:50%;margin-right:6px;'></span>{topic}",
+            f"background:{colour};border-radius:50%;margin-right:6px;'></span>{concept}",
             unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -229,8 +228,8 @@ with tab1:
     if df.empty:
         st.info("No best practices have been added yet.")
     else:
-        for topic in TOPICS:
-            colour   = TOPIC_COLOURS[topic]
+        for topic in CONCEPTS:
+            colour   = CONCEPT_COLOURS[concept]
             topic_df = df[df["category"] == topic]
 
             # Coloured topic heading bar
@@ -260,7 +259,6 @@ with tab1:
                     st.markdown(
                         f'<div class="bp-card" style="border-left:5px solid {colour};">'
                         f'<div class="bp-practice">{row["practice"]}</div>'
-                        f'<div class="bp-rationale">{row["rationale"]}</div>'
                         f'<div class="bp-meta">'
                         f'<span>➕ Added by <strong>{row["added_by"]}</strong> on {row["added_on"]}</span>'
                         f'{edited_line}'
@@ -308,11 +306,11 @@ with tab1:
                     if st.session_state.editing_id == int(row["id"]):
                         with st.form(key=f"edit_form_{row['id']}"):
                             st.markdown(f"**Editing entry #{row['id']}**")
-                            new_topic = st.selectbox("Best Practice", TOPICS,
-                                                    index=TOPICS.index(row["category"])
-                                                    if row["category"] in TOPICS else 0)
-                            new_practice  = st.text_area("Practice",               value=row["practice"],  height=80)
-                            new_rationale = st.text_area("Rationale / Explanation", value=row["rationale"], height=100)
+                            new_topic   = st.selectbox("Concept", CONCEPTS,
+                                                    index=CONCEPTS.index(row["category"])
+                                                    if row["category"] in CONCEPTS else 0)
+                            new_content = st.text_area("Best Practice",
+                                                    value=row["practice"], height=200)
                             ecol1, ecol2  = st.columns(2)
                             with ecol1:
                                 submitted = st.form_submit_button("💾 Save Changes", type="primary")
@@ -320,13 +318,12 @@ with tab1:
                                 cancelled = st.form_submit_button("Cancel")
 
                             if submitted:
-                                if not new_practice.strip():
-                                    st.error("The practice field cannot be empty.")
+                                if not new_content.strip():
+                                    st.error("The Best Practice field cannot be empty.")
                                 else:
                                     update_row(int(row["id"]), {
                                         "category":       new_topic,
-                                        "practice":       new_practice.strip(),
-                                        "rationale":      new_rationale.strip(),
+                                        "practice":       new_content.strip(),
                                         "last_edited_by": st.session_state.student_name,
                                         "last_edited_on": now_str(),
                                         "edit_count":     int(row["edit_count"]) + 1,
@@ -352,57 +349,46 @@ with tab2:
                     "Be concise in the *practice* and explain the *rationale* so "
                     "classmates understand the reasoning.")
 
-        # FIX 1 — disable the button while a submission is in flight
         with st.form("add_form"):
-            new_topic = st.selectbox(                          # FIX 4 — "Best Practice"
-                "Best Practice",
-                TOPICS,
-                index=TOPICS.index(st.session_state.add_topic)
-                if st.session_state.add_topic in TOPICS else 0,
+            new_topic = st.selectbox(
+                "Concept",
+                CONCEPTS,
+                index=CONCEPTS.index(st.session_state.add_topic)
+                if st.session_state.add_topic in CONCEPTS else 0,
             )
-            new_practice  = st.text_area("Practice *",
-                value=st.session_state.add_practice,
-                placeholder="e.g. Always unlever and re-lever beta to match the target's capital structure.",
-                height=90)
-            new_rationale = st.text_area("Rationale / Explanation *",
-                value=st.session_state.add_rationale,
-                placeholder="Explain why this practice matters and how to apply it…",
-                height=130)
+            new_content = st.text_area("Best Practice *",
+                value=st.session_state.add_content,
+                placeholder="Describe the best practice, including the rationale…",
+                height=200)
 
             submitted = st.form_submit_button(
                 "➕ Add to the List",
                 type="primary",
-                disabled=st.session_state.submitting,   # FIX 1 — greyed out after first click
+                disabled=st.session_state.submitting,
             )
 
             if submitted and not st.session_state.submitting:
-                # Persist field values so they survive validation reruns
-                st.session_state.add_topic     = new_topic
-                st.session_state.add_practice  = new_practice
-                st.session_state.add_rationale = new_rationale
+                st.session_state.add_topic   = new_topic
+                st.session_state.add_content = new_content
 
-                if not new_practice.strip():
-                    st.error("Please fill in the Practice field.")
-                elif not new_rationale.strip():
-                    st.error("Please provide a rationale so classmates understand the reasoning.")
+                if not new_content.strip():
+                    st.error("Please fill in the Best Practice field.")
                 else:
-                    st.session_state.submitting = True          # FIX 1 — lock button
+                    st.session_state.submitting = True
                     insert_row({
                         "class_name":     st.session_state.student_class,
                         "category":       new_topic,
-                        "practice":       new_practice.strip(),
-                        "rationale":      new_rationale.strip(),
+                        "practice":       new_content.strip(),
+                        "rationale":      "",
                         "added_by":       st.session_state.student_name,
                         "added_on":       now_str(),
                         "last_edited_by": "",
                         "last_edited_on": "",
                         "edit_count":     0,
                     })
-                    # Reset fields and release the lock
-                    st.session_state.add_topic     = "Risk-Free Rate"
-                    st.session_state.add_practice  = ""
-                    st.session_state.add_rationale = ""
-                    st.session_state.submitting    = False      # FIX 1 — unlock for next entry
+                    st.session_state.add_topic   = "Risk-Free Rate"
+                    st.session_state.add_content = ""
+                    st.session_state.submitting  = False
                     st.success(f"✅ Best practice added! Thank you, {st.session_state.student_name}.")
                     st.rerun()
 
@@ -459,7 +445,7 @@ with tab3:
         student_df = df[df["added_by"] == selected][
             ["category","practice","added_on","last_edited_by","last_edited_on","edit_count"]
         ].rename(columns={
-            "category":"Best Practice","practice":"Practice","added_on":"Added On",
+            "category":"Concept","practice":"Best Practice","added_on":"Added On",
             "last_edited_by":"Last Edited By","last_edited_on":"Last Edited On","edit_count":"# Edits"
         })
         st.dataframe(student_df, use_container_width=True)
