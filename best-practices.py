@@ -10,15 +10,15 @@ st.set_page_config(
     layout="wide",
 )
 
-# ── Categories ────────────────────────────────────────────────────────────────
-CATEGORIES = [
+# ── Best Practice topics (renamed from "Categories") ─────────────────────────
+TOPICS = [
     "Risk-Free Rate",
     "Cost of Debt",
     "Cost of Equity",
     "Cost of Capital",
 ]
 
-CAT_COLOURS = {
+TOPIC_COLOURS = {
     "Risk-Free Rate":  "#2e7d52",
     "Cost of Debt":    "#b94040",
     "Cost of Equity":  "#c8952a",
@@ -55,6 +55,9 @@ def insert_row(row: dict):
 def update_row(row_id: int, updates: dict):
     supabase.table(TABLE).update(updates).eq("id", row_id).execute()
 
+def delete_row(row_id: int):
+    supabase.table(TABLE).delete().eq("id", row_id).execute()
+
 def now_str() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -78,16 +81,14 @@ def contribution_summary(df: pd.DataFrame) -> pd.DataFrame:
     return merged
 
 # ── Session state ─────────────────────────────────────────────────────────────
-if "student_name" not in st.session_state:
-    st.session_state.student_name = ""
-if "editing_id" not in st.session_state:
-    st.session_state.editing_id = None
-if "add_category" not in st.session_state:
-    st.session_state.add_category = "Risk-Free Rate"
-if "add_practice" not in st.session_state:
-    st.session_state.add_practice = ""
-if "add_rationale" not in st.session_state:
-    st.session_state.add_rationale = ""
+if "student_name"  not in st.session_state: st.session_state.student_name  = ""
+if "editing_id"    not in st.session_state: st.session_state.editing_id    = None
+if "add_topic"     not in st.session_state: st.session_state.add_topic     = "Risk-Free Rate"
+if "add_practice"  not in st.session_state: st.session_state.add_practice  = ""
+if "add_rationale" not in st.session_state: st.session_state.add_rationale = ""
+# FIX 1 — duplicate-submit guard
+if "submitting"    not in st.session_state: st.session_state.submitting    = False
+if "confirm_delete" not in st.session_state: st.session_state.confirm_delete = None
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -111,11 +112,14 @@ st.markdown("""
     .section-title { font-size:1.05rem; font-weight:700; color:var(--navy);
         border-left:4px solid var(--gold); padding-left:.7rem; margin:1.4rem 0 .8rem; }
 
+    /* FIX 2 — hide the stray /div artifact Streamlit renders below markdown blocks */
+    .element-container:has(> .stMarkdown > div > p:only-child:empty) { display:none; }
+
     .bp-card { background:var(--card); border:1px solid var(--border);
-        border-radius:8px; padding:1rem 1.2rem; margin-bottom:.85rem;
+        border-radius:8px; padding:1rem 1.2rem; margin-bottom:.3rem;
         box-shadow:0 1px 4px rgba(0,0,0,.05); }
     .bp-card:hover { box-shadow:0 3px 10px rgba(0,0,0,.09); }
-    .bp-category { display:inline-block; background:#e8edf5; color:var(--navy);
+    .bp-topic { display:inline-block; background:#e8edf5; color:var(--navy);
         font-size:.72rem; font-weight:700; letter-spacing:.5px; text-transform:uppercase;
         border-radius:4px; padding:.18rem .55rem; margin-bottom:.5rem; }
     .bp-practice  { font-size:1rem; font-weight:600; color:var(--navy); margin-bottom:.3rem; }
@@ -146,11 +150,11 @@ with st.sidebar:
                 "**cost of capital**. Add new practices, refine existing ones, "
                 "and track everyone's contributions.")
     st.markdown("---")
-    st.markdown("### 🏷️ Categories")
-    for cat, colour in CAT_COLOURS.items():
+    st.markdown("### 🏷️ Best Practice")   # FIX 4 — renamed from "Categories"
+    for topic, colour in TOPIC_COLOURS.items():
         st.markdown(
             f"<span style='display:inline-block;width:10px;height:10px;"
-            f"background:{colour};border-radius:50%;margin-right:6px;'></span>{cat}",
+            f"background:{colour};border-radius:50%;margin-right:6px;'></span>{topic}",
             unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -185,7 +189,8 @@ with tab1:
     with fcol1:
         search = st.text_input("🔍 Search practices", placeholder="keyword…")
     with fcol2:
-        cat_filter = st.selectbox("Filter by category", ["All"] + CATEGORIES)
+        # FIX 4 — "Best Practice" instead of "Category"
+        topic_filter = st.selectbox("Filter by Best Practice", ["All"] + TOPICS)
 
     filtered = df.copy()
     if search:
@@ -194,8 +199,8 @@ with tab1:
             filtered["rationale"].str.contains(search, case=False, na=False)
         )
         filtered = filtered[mask]
-    if cat_filter != "All":
-        filtered = filtered[filtered["category"] == cat_filter]
+    if topic_filter != "All":
+        filtered = filtered[filtered["category"] == topic_filter]
 
     st.markdown(f"<div class='section-title'>Showing {len(filtered)} practice(s)</div>",
                 unsafe_allow_html=True)
@@ -204,36 +209,69 @@ with tab1:
         st.info("No practices match your filter.")
     else:
         for _, row in filtered.iterrows():
-            colour      = CAT_COLOURS.get(row["category"], "#1a2e4a")
+            colour      = TOPIC_COLOURS.get(row["category"], "#1a2e4a")
             edited_line = ""
             if str(row.get("last_edited_by","")).strip() not in ("","nan"):
                 edited_line = (
                     f'<span>✏️ Last edited by <strong>{row["last_edited_by"]}</strong>'
                     f' on {row["last_edited_on"]} (edit #{int(row["edit_count"])})</span>'
                 )
-            st.markdown(f"""
-            <div class="bp-card" style="border-left:5px solid {colour};">
-                <div class="bp-category">{row['category']}</div>
-                <div class="bp-practice">{row['practice']}</div>
-                <div class="bp-rationale">{row['rationale']}</div>
-                <div class="bp-meta">
-                    <span>➕ Added by <strong>{row['added_by']}</strong> on {row['added_on']}</span>
-                    {edited_line}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
 
-            if st.session_state.student_name:
+            # FIX 2 — card is now a pure f-string with no trailing whitespace lines
+            # that cause Streamlit to emit a stray "/div" text node.
+            st.markdown(
+                f'<div class="bp-card" style="border-left:5px solid {colour};">'
+                f'<div class="bp-topic">{row["category"]}</div>'
+                f'<div class="bp-practice">{row["practice"]}</div>'
+                f'<div class="bp-rationale">{row["rationale"]}</div>'
+                f'<div class="bp-meta">'
+                f'<span>➕ Added by <strong>{row["added_by"]}</strong> on {row["added_on"]}</span>'
+                f'{edited_line}'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Author gets a Delete button; everyone else gets an Edit button
+            is_author = (
+                st.session_state.student_name and
+                st.session_state.student_name == row["added_by"]
+            )
+            is_other_logged_in = (
+                st.session_state.student_name and
+                st.session_state.student_name != row["added_by"]
+            )
+            if is_author:
+                # Delete flow — ask for confirmation before removing
+                if st.session_state.confirm_delete == int(row["id"]):
+                    st.warning("Are you sure you want to delete this entry? This cannot be undone.")
+                    dcol1, dcol2 = st.columns(2)
+                    with dcol1:
+                        if st.button("🗑️ Yes, delete it", key=f"del_confirm_{row['id']}"):
+                            delete_row(int(row["id"]))
+                            st.session_state.confirm_delete = None
+                            st.rerun()
+                    with dcol2:
+                        if st.button("Cancel", key=f"del_cancel_{row['id']}"):
+                            st.session_state.confirm_delete = None
+                            st.rerun()
+                else:
+                    if st.button("🗑️ Delete my entry", key=f"del_btn_{row['id']}"):
+                        st.session_state.confirm_delete = int(row["id"])
+                        st.rerun()
+
+            if is_other_logged_in:
                 if st.button("✏️ Edit this entry", key=f"edit_btn_{row['id']}"):
                     st.session_state.editing_id = int(row["id"])
 
             if st.session_state.editing_id == int(row["id"]):
                 with st.form(key=f"edit_form_{row['id']}"):
                     st.markdown(f"**Editing entry #{row['id']}**")
-                    new_cat = st.selectbox("Category", CATEGORIES,
-                                          index=CATEGORIES.index(row["category"])
-                                          if row["category"] in CATEGORIES else 0)
-                    new_practice  = st.text_area("Best Practice",           value=row["practice"],  height=80)
+                    # FIX 4 — "Best Practice" label instead of "Category"
+                    new_topic = st.selectbox("Best Practice", TOPICS,
+                                            index=TOPICS.index(row["category"])
+                                            if row["category"] in TOPICS else 0)
+                    new_practice  = st.text_area("Practice",              value=row["practice"],  height=80)
                     new_rationale = st.text_area("Rationale / Explanation", value=row["rationale"], height=100)
                     ecol1, ecol2  = st.columns(2)
                     with ecol1:
@@ -246,7 +284,7 @@ with tab1:
                             st.error("The practice field cannot be empty.")
                         else:
                             update_row(int(row["id"]), {
-                                "category":       new_cat,
+                                "category":       new_topic,
                                 "practice":       new_practice.strip(),
                                 "rationale":      new_rationale.strip(),
                                 "last_edited_by": st.session_state.student_name,
@@ -274,13 +312,15 @@ with tab2:
                     "Be concise in the *practice* and explain the *rationale* so "
                     "classmates understand the reasoning.")
 
+        # FIX 1 — disable the button while a submission is in flight
         with st.form("add_form"):
-            new_cat = st.selectbox(
-                "Category", CATEGORIES,
-                index=CATEGORIES.index(st.session_state.add_category)
-                if st.session_state.add_category in CATEGORIES else 0,
+            new_topic = st.selectbox(                          # FIX 4 — "Best Practice"
+                "Best Practice",
+                TOPICS,
+                index=TOPICS.index(st.session_state.add_topic)
+                if st.session_state.add_topic in TOPICS else 0,
             )
-            new_practice  = st.text_area("Best Practice *",
+            new_practice  = st.text_area("Practice *",
                 value=st.session_state.add_practice,
                 placeholder="e.g. Always unlever and re-lever beta to match the target's capital structure.",
                 height=90)
@@ -288,21 +328,27 @@ with tab2:
                 value=st.session_state.add_rationale,
                 placeholder="Explain why this practice matters and how to apply it…",
                 height=130)
-            submitted = st.form_submit_button("➕ Add to the List", type="primary")
 
-            if submitted:
-                # Persist field values in session state so they survive a rerun
-                st.session_state.add_category  = new_cat
+            submitted = st.form_submit_button(
+                "➕ Add to the List",
+                type="primary",
+                disabled=st.session_state.submitting,   # FIX 1 — greyed out after first click
+            )
+
+            if submitted and not st.session_state.submitting:
+                # Persist field values so they survive validation reruns
+                st.session_state.add_topic     = new_topic
                 st.session_state.add_practice  = new_practice
                 st.session_state.add_rationale = new_rationale
 
                 if not new_practice.strip():
-                    st.error("Please fill in the Best Practice field.")
+                    st.error("Please fill in the Practice field.")
                 elif not new_rationale.strip():
                     st.error("Please provide a rationale so classmates understand the reasoning.")
                 else:
+                    st.session_state.submitting = True          # FIX 1 — lock button
                     insert_row({
-                        "category":       new_cat,
+                        "category":       new_topic,
                         "practice":       new_practice.strip(),
                         "rationale":      new_rationale.strip(),
                         "added_by":       st.session_state.student_name,
@@ -311,10 +357,11 @@ with tab2:
                         "last_edited_on": "",
                         "edit_count":     0,
                     })
-                    # Clear fields only after a successful save
-                    st.session_state.add_category  = "Risk-Free Rate"
+                    # Reset fields and release the lock
+                    st.session_state.add_topic     = "Risk-Free Rate"
                     st.session_state.add_practice  = ""
                     st.session_state.add_rationale = ""
+                    st.session_state.submitting    = False      # FIX 1 — unlock for next entry
                     st.success(f"✅ Best practice added! Thank you, {st.session_state.student_name}.")
                     st.rerun()
 
@@ -350,7 +397,7 @@ with tab3:
         student_df = df[df["added_by"] == selected][
             ["category","practice","added_on","last_edited_by","last_edited_on","edit_count"]
         ].rename(columns={
-            "category":"Category","practice":"Best Practice","added_on":"Added On",
+            "category":"Best Practice","practice":"Practice","added_on":"Added On",
             "last_edited_by":"Last Edited By","last_edited_on":"Last Edited On","edit_count":"# Edits"
         })
         st.dataframe(student_df, use_container_width=True)
