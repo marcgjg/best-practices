@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import pytz
 from supabase import create_client, Client
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -59,7 +60,8 @@ def delete_row(row_id: int):
     supabase.table(TABLE).delete().eq("id", row_id).execute()
 
 def now_str() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M")
+    madrid = pytz.timezone("Europe/Madrid")
+    return datetime.now(madrid).strftime("%Y-%m-%d %H:%M")
 
 def contribution_summary(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -82,6 +84,7 @@ def contribution_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Session state ─────────────────────────────────────────────────────────────
 if "student_name"  not in st.session_state: st.session_state.student_name  = ""
+if "student_email" not in st.session_state: st.session_state.student_email = ""
 if "editing_id"    not in st.session_state: st.session_state.editing_id    = None
 if "add_topic"     not in st.session_state: st.session_state.add_topic     = "Risk-Free Rate"
 if "add_practice"  not in st.session_state: st.session_state.add_practice  = ""
@@ -133,17 +136,34 @@ st.markdown("""
 # ══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
 # ══════════════════════════════════════════════════════════════════════════════
+IE_DOMAIN = "@student.ie.edu"
+
+def valid_ie_email(email: str) -> bool:
+    return email.strip().lower().endswith(IE_DOMAIN)
+
 with st.sidebar:
     st.markdown("## 👤 Your Identity")
-    name_input = st.text_input("Enter your full name",
+    name_input = st.text_input("Full name",
                                value=st.session_state.student_name,
                                placeholder="e.g. Jane Smith")
+    email_input = st.text_input("IE University email",
+                                value=st.session_state.student_email,
+                                placeholder=f"e.g. jsmith{IE_DOMAIN}")
     if name_input:
-        st.session_state.student_name = name_input.strip()
-    if st.session_state.student_name:
+        st.session_state.student_name  = name_input.strip()
+    if email_input:
+        st.session_state.student_email = email_input.strip().lower()
+
+    logged_in = (
+        bool(st.session_state.student_name) and
+        valid_ie_email(st.session_state.student_email)
+    )
+    if logged_in:
         st.success(f"Logged in as **{st.session_state.student_name}**")
+    elif st.session_state.student_email and not valid_ie_email(st.session_state.student_email):
+        st.error(f"Please use your IE University email ({IE_DOMAIN})")
     else:
-        st.warning("Enter your name to add or edit entries.")
+        st.warning("Enter your name and IE email to participate.")
     st.markdown("---")
     st.markdown("### 📌 About this tool")
     st.markdown("Collaboratively build a best-practice guide for estimating the "
@@ -234,11 +254,11 @@ with tab1:
 
             # Author gets a Delete button; everyone else gets an Edit button
             is_author = (
-                st.session_state.student_name and
+                logged_in and
                 st.session_state.student_name == row["added_by"]
             )
             is_other_logged_in = (
-                st.session_state.student_name and
+                logged_in and
                 st.session_state.student_name != row["added_by"]
             )
             if is_author:
@@ -307,7 +327,7 @@ with tab1:
 # TAB 2 — ADD
 # ─────────────────────────────────────────────────────────────────────────────
 with tab2:
-    if not st.session_state.student_name:
+    if not logged_in:
         st.warning("⬅️ Please enter your name in the sidebar before adding a practice.")
     else:
         st.markdown(
@@ -392,7 +412,28 @@ with tab3:
             })
         st.markdown("<div class='section-title'>Contribution Chart</div>",
                     unsafe_allow_html=True)
-        st.bar_chart(contrib.set_index("Student")[["Entries Added","Entries Edited"]])
+        import plotly.graph_objects as go
+        chart_data = contrib.set_index("Student")[["Entries Added","Entries Edited"]]
+        fig = go.Figure()
+        fig.add_bar(name="Added",  x=chart_data.index, y=chart_data["Entries Added"],
+                    marker_color="#1a2e4a")
+        fig.add_bar(name="Edited", x=chart_data.index, y=chart_data["Entries Edited"],
+                    marker_color="#c8952a")
+        max_val = int(chart_data.values.sum())
+        fig.update_layout(
+            barmode="stack",
+            plot_bgcolor="white",
+            yaxis=dict(
+                title="Contributions",
+                tickmode="linear", tick0=0,
+                dtick=1,
+                range=[0, max(max_val, 1) + 0.5],
+            ),
+            xaxis_title="Student",
+            legend_title="Type",
+            margin=dict(t=20, b=20),
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("<div class='section-title'>View a Student's Entries</div>",
                 unsafe_allow_html=True)
