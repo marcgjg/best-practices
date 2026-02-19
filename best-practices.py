@@ -133,6 +133,17 @@ st.markdown("""
     .bp-meta      { font-size:.76rem; color:var(--muted); }
     .bp-meta span { margin-right:.9rem; }
     .stButton > button { border-radius:6px !important; font-weight:600 !important; }
+
+    /* Sidebar selectbox — make selected value clearly visible */
+    [data-testid="stSidebar"] [data-baseweb="select"] div,
+    [data-testid="stSidebar"] [data-baseweb="select"] span,
+    [data-testid="stSidebar"] [data-baseweb="select"] input {
+        color: white !important;
+    }
+    [data-testid="stSidebar"] [data-baseweb="select"] > div {
+        background-color: #253d5e !important;
+        border-color: #3a5278 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
