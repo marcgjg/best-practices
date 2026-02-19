@@ -82,6 +82,12 @@ if "student_name" not in st.session_state:
     st.session_state.student_name = ""
 if "editing_id" not in st.session_state:
     st.session_state.editing_id = None
+if "add_category" not in st.session_state:
+    st.session_state.add_category = "Risk-Free Rate"
+if "add_practice" not in st.session_state:
+    st.session_state.add_practice = ""
+if "add_rationale" not in st.session_state:
+    st.session_state.add_rationale = ""
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -268,17 +274,28 @@ with tab2:
                     "Be concise in the *practice* and explain the *rationale* so "
                     "classmates understand the reasoning.")
 
-        with st.form("add_form", clear_on_submit=True):
-            new_cat       = st.selectbox("Category", CATEGORIES)
+        with st.form("add_form"):
+            new_cat = st.selectbox(
+                "Category", CATEGORIES,
+                index=CATEGORIES.index(st.session_state.add_category)
+                if st.session_state.add_category in CATEGORIES else 0,
+            )
             new_practice  = st.text_area("Best Practice *",
+                value=st.session_state.add_practice,
                 placeholder="e.g. Always unlever and re-lever beta to match the target's capital structure.",
                 height=90)
             new_rationale = st.text_area("Rationale / Explanation *",
+                value=st.session_state.add_rationale,
                 placeholder="Explain why this practice matters and how to apply it…",
                 height=130)
             submitted = st.form_submit_button("➕ Add to the List", type="primary")
 
             if submitted:
+                # Persist field values in session state so they survive a rerun
+                st.session_state.add_category  = new_cat
+                st.session_state.add_practice  = new_practice
+                st.session_state.add_rationale = new_rationale
+
                 if not new_practice.strip():
                     st.error("Please fill in the Best Practice field.")
                 elif not new_rationale.strip():
@@ -294,6 +311,10 @@ with tab2:
                         "last_edited_on": "",
                         "edit_count":     0,
                     })
+                    # Clear fields only after a successful save
+                    st.session_state.add_category  = "Risk-Free Rate"
+                    st.session_state.add_practice  = ""
+                    st.session_state.add_rationale = ""
                     st.success(f"✅ Best practice added! Thank you, {st.session_state.student_name}.")
                     st.rerun()
 
