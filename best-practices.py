@@ -31,9 +31,10 @@ CONCEPT_COLOURS = {
 def get_supabase() -> Client:
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
-supabase = get_supabase()
-TABLE   = "best_practices"
-CLASSES = ["GOMBA 2025 F1", "GOMBA 2025 F2"]
+supabase       = get_supabase()
+TABLE          = "best_practices"
+CLASSES        = ["GOMBA 2025 F1", "GOMBA 2025 F2"]
+ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "GeoffWood2005!")
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 def load_data(class_name: str) -> pd.DataFrame:
@@ -58,6 +59,10 @@ def update_row(row_id: int, updates: dict):
 
 def delete_row(row_id: int):
     supabase.table(TABLE).delete().eq("id", row_id).execute()
+
+def delete_class_data(class_name: str):
+    """Delete all rows for a given class — used by admin reset."""
+    supabase.table(TABLE).delete().eq("class_name", class_name).execute()
 
 def now_str() -> str:
     madrid = pytz.timezone("Europe/Madrid")
@@ -86,7 +91,9 @@ if "student_class"  not in st.session_state: st.session_state.student_class  = C
 if "editing_id"     not in st.session_state: st.session_state.editing_id     = None
 if "adding_concept" not in st.session_state: st.session_state.adding_concept = None
 if "submitting"     not in st.session_state: st.session_state.submitting     = False
-if "confirm_delete" not in st.session_state: st.session_state.confirm_delete = None
+if "confirm_delete"      not in st.session_state: st.session_state.confirm_delete      = None
+if "admin_authenticated" not in st.session_state: st.session_state.admin_authenticated = False
+if "confirm_reset"       not in st.session_state: st.session_state.confirm_reset       = None
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -200,7 +207,7 @@ st.markdown("---")
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS — now just two
 # ══════════════════════════════════════════════════════════════════════════════
-tab1, tab2 = st.tabs(["📋 Best Practices List", "🏆 Contributions"])
+tab1, tab2, tab3 = st.tabs(["📋 Best Practices List", "🏆 Contributions", "🔐 Admin"])
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 1 — BEST PRACTICES LIST (add inline if empty, edit/delete if filled)
@@ -419,3 +426,89 @@ with tab2:
             "last_edited_by":"Last Edited By","last_edited_on":"Last Edited On","edit_count":"# Edits"
         })
         st.dataframe(student_df, use_container_width=True)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 3 — ADMIN
+# ─────────────────────────────────────────────────────────────────────────────
+with tab3:
+    st.markdown("<div class='section-title'>Admin Panel</div>", unsafe_allow_html=True)
+
+    if not st.session_state.admin_authenticated:
+        st.markdown("Enter the admin password to access reset controls.")
+        pwd = st.text_input("Password", type="password", key="admin_pwd_input")
+        if st.button("🔓 Log in", key="admin_login_btn"):
+            if pwd == ADMIN_PASSWORD:
+                st.session_state.admin_authenticated = True
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
+    else:
+        st.success("✅ Logged in as admin.")
+        if st.button("🔒 Log out", key="admin_logout_btn"):
+            st.session_state.admin_authenticated = False
+            st.rerun()
+
+        st.markdown("---")
+        st.markdown("### 🗑️ Reset Concept Boxes")
+        st.markdown(
+            "Select a class and choose which concepts to clear. "
+            "This permanently deletes the entry for that concept and cannot be undone."
+        )
+
+        reset_class = st.selectbox("Class to reset", CLASSES, key="admin_class_select")
+        df_admin    = load_data(reset_class)
+
+        if df_admin.empty:
+            st.info(f"No entries found for {reset_class}.")
+        else:
+            for concept in CONCEPTS:
+                colour   = CONCEPT_COLOURS[concept]
+                rows     = df_admin[df_admin["category"] == concept]
+                has_entry = not rows.empty
+
+                col_label, col_btn = st.columns([3, 1])
+                with col_label:
+                    status = (f"<span style='color:{colour};font-weight:700;'>{concept}</span> — "
+                              f"{'✅ has entry' if has_entry else '⬜ empty'}")
+                    st.markdown(status, unsafe_allow_html=True)
+                with col_btn:
+                    if has_entry:
+                        if st.session_state.confirm_reset == (reset_class, concept):
+                            st.warning(f"Delete the entry for **{concept}** in {reset_class}?")
+                            dcol1, dcol2 = st.columns(2)
+                            with dcol1:
+                                if st.button("Yes, delete", key=f"admin_del_yes_{concept}"):
+                                    row_id = int(rows.iloc[0]["id"])
+                                    delete_row(row_id)
+                                    st.session_state.confirm_reset = None
+                                    st.success(f"✅ '{concept}' cleared for {reset_class}.")
+                                    st.rerun()
+                            with dcol2:
+                                if st.button("Cancel", key=f"admin_del_no_{concept}"):
+                                    st.session_state.confirm_reset = None
+                                    st.rerun()
+                        else:
+                            if st.button("🗑️ Reset", key=f"admin_reset_{concept}"):
+                                st.session_state.confirm_reset = (reset_class, concept)
+                                st.rerun()
+
+            st.markdown("---")
+            st.markdown("### 🔴 Reset Entire Class")
+            st.markdown("This deletes **all four** concept entries for the selected class at once.")
+            if st.session_state.confirm_reset == (reset_class, "ALL"):
+                st.error(f"This will delete all entries for **{reset_class}**. Are you sure?")
+                rcol1, rcol2 = st.columns(2)
+                with rcol1:
+                    if st.button("Yes, reset all", key="admin_reset_all_yes"):
+                        delete_class_data(reset_class)
+                        st.session_state.confirm_reset = None
+                        st.success(f"✅ All entries cleared for {reset_class}.")
+                        st.rerun()
+                with rcol2:
+                    if st.button("Cancel", key="admin_reset_all_no"):
+                        st.session_state.confirm_reset = None
+                        st.rerun()
+            else:
+                if st.button(f"🔴 Reset all entries for {reset_class}", key="admin_reset_all_btn"):
+                    st.session_state.confirm_reset = (reset_class, "ALL")
+                    st.rerun()
