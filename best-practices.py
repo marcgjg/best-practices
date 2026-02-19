@@ -34,18 +34,20 @@ def get_supabase() -> Client:
     return create_client(url, key)
 
 supabase = get_supabase()
-TABLE = "best_practices"
+TABLE    = "best_practices"
+CLASSES  = ["GOMBA 2025 F1", "GOMBA 2025 F2"]
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
-def load_data() -> pd.DataFrame:
-    res = supabase.table(TABLE).select("*").order("id").execute()
+def load_data(class_name: str) -> pd.DataFrame:
+    res = (supabase.table(TABLE).select("*")
+           .eq("class_name", class_name).order("id").execute())
     if not res.data:
         return pd.DataFrame(columns=[
-            "id","category","practice","rationale",
+            "id","class_name","category","practice","rationale",
             "added_by","added_on","last_edited_by","last_edited_on","edit_count"
         ])
     df = pd.DataFrame(res.data)
-    for col in ["last_edited_by","last_edited_on","added_by","category","practice","rationale"]:
+    for col in ["last_edited_by","last_edited_on","added_by","category","practice","rationale","class_name"]:
         df[col] = df[col].fillna("").astype(str)
     df["edit_count"] = pd.to_numeric(df["edit_count"], errors="coerce").fillna(0).astype(int)
     return df
@@ -85,6 +87,7 @@ def contribution_summary(df: pd.DataFrame) -> pd.DataFrame:
 # ── Session state ─────────────────────────────────────────────────────────────
 if "student_name"  not in st.session_state: st.session_state.student_name  = ""
 if "student_email" not in st.session_state: st.session_state.student_email = ""
+if "student_class" not in st.session_state: st.session_state.student_class = CLASSES[0]
 if "editing_id"    not in st.session_state: st.session_state.editing_id    = None
 if "add_topic"     not in st.session_state: st.session_state.add_topic     = "Risk-Free Rate"
 if "add_practice"  not in st.session_state: st.session_state.add_practice  = ""
@@ -149,17 +152,22 @@ with st.sidebar:
     email_input = st.text_input("IE University email",
                                 value=st.session_state.student_email,
                                 placeholder=f"e.g. jsmith{IE_DOMAIN}")
+    class_input = st.selectbox("Your class",
+                               CLASSES,
+                               index=CLASSES.index(st.session_state.student_class)
+                               if st.session_state.student_class in CLASSES else 0)
     if name_input:
         st.session_state.student_name  = name_input.strip()
     if email_input:
         st.session_state.student_email = email_input.strip().lower()
+    st.session_state.student_class = class_input
 
     logged_in = (
         bool(st.session_state.student_name) and
         valid_ie_email(st.session_state.student_email)
     )
     if logged_in:
-        st.success(f"Logged in as **{st.session_state.student_name}**")
+        st.success(f"Logged in as **{st.session_state.student_name}** · {st.session_state.student_class}")
     elif st.session_state.student_email and not valid_ie_email(st.session_state.student_email):
         st.error(f"Please use your IE University email ({IE_DOMAIN})")
     else:
@@ -180,15 +188,16 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════════════
 # HEADER
 # ══════════════════════════════════════════════════════════════════════════════
-st.markdown("""
+active_class = st.session_state.student_class
+st.markdown(f"""
 <div class="app-header">
   <h1>📊 Cost of Capital — Best Practices</h1>
   <div class="gold-bar"></div>
-  <p>Global Online MBA · Finance · Collaborative Knowledge Base</p>
+  <p>Global Online MBA · Finance · {active_class} · Collaborative Knowledge Base</p>
 </div>
 """, unsafe_allow_html=True)
 
-df = load_data()
+df = load_data(active_class)
 
 c1, c2, c3 = st.columns(3)
 c1.metric("📝 Best Practices", len(df))
@@ -368,6 +377,7 @@ with tab2:
                 else:
                     st.session_state.submitting = True          # FIX 1 — lock button
                     insert_row({
+                        "class_name":     st.session_state.student_class,
                         "category":       new_topic,
                         "practice":       new_practice.strip(),
                         "rationale":      new_rationale.strip(),
