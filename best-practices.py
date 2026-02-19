@@ -23,7 +23,7 @@ TOPIC_COLOURS = {
     "Risk-Free Rate":  "#2e7d52",
     "Cost of Debt":    "#b94040",
     "Cost of Equity":  "#c8952a",
-    "Cost of Capital": "#1a2e4a",
+    "Cost of Capital": "#4a90d9",
 }
 
 # ── Supabase connection ───────────────────────────────────────────────────────
@@ -205,123 +205,118 @@ tab1, tab2, tab3 = st.tabs(["📋 Best Practices List", "➕ Add a New Practice"
 # TAB 1 — VIEW & EDIT
 # ─────────────────────────────────────────────────────────────────────────────
 with tab1:
-    fcol1, fcol2 = st.columns([2,1])
-    with fcol1:
-        search = st.text_input("🔍 Search practices", placeholder="keyword…")
-    with fcol2:
-        # FIX 4 — "Best Practice" instead of "Category"
-        topic_filter = st.selectbox("Filter by Best Practice", ["All"] + TOPICS)
-
-    filtered = df.copy()
-    if search:
-        mask = (
-            filtered["practice"].str.contains(search, case=False, na=False) |
-            filtered["rationale"].str.contains(search, case=False, na=False)
-        )
-        filtered = filtered[mask]
-    if topic_filter != "All":
-        filtered = filtered[filtered["category"] == topic_filter]
-
-    st.markdown(f"<div class='section-title'>Showing {len(filtered)} practice(s)</div>",
-                unsafe_allow_html=True)
-
-    if filtered.empty:
-        st.info("No practices match your filter.")
+    # Show all four topics in fixed order, each with its entries beneath
+    if df.empty:
+        st.info("No best practices have been added yet.")
     else:
-        for _, row in filtered.iterrows():
-            colour      = TOPIC_COLOURS.get(row["category"], "#1a2e4a")
-            edited_line = ""
-            if str(row.get("last_edited_by","")).strip() not in ("","nan"):
-                edited_line = (
-                    f'<span>✏️ Last edited by <strong>{row["last_edited_by"]}</strong>'
-                    f' on {row["last_edited_on"]} (edit #{int(row["edit_count"])})</span>'
-                )
+        for topic in TOPICS:
+            colour   = TOPIC_COLOURS[topic]
+            topic_df = df[df["category"] == topic]
 
-            # FIX 2 — card is now a pure f-string with no trailing whitespace lines
-            # that cause Streamlit to emit a stray "/div" text node.
+            # Coloured topic heading bar
             st.markdown(
-                f'<div class="bp-card" style="border-left:5px solid {colour};">'
-                f'<div class="bp-topic">{row["category"]}</div>'
-                f'<div class="bp-practice">{row["practice"]}</div>'
-                f'<div class="bp-rationale">{row["rationale"]}</div>'
-                f'<div class="bp-meta">'
-                f'<span>➕ Added by <strong>{row["added_by"]}</strong> on {row["added_on"]}</span>'
-                f'{edited_line}'
-                f'</div>'
-                f'</div>',
+                f'<div style="background:{colour};color:white;font-weight:700;'
+                f'font-size:.85rem;letter-spacing:.6px;text-transform:uppercase;'
+                f'padding:.45rem .9rem;border-radius:6px;margin:1.1rem 0 .5rem;">'
+                f'{topic}</div>',
                 unsafe_allow_html=True,
             )
 
-            # Author gets a Delete button; everyone else gets an Edit button
-            is_author = (
-                logged_in and
-                st.session_state.student_name == row["added_by"]
-            )
-            is_other_logged_in = (
-                logged_in and
-                st.session_state.student_name != row["added_by"]
-            )
-            if is_author:
-                # Author gets both Edit and Delete buttons side by side
-                if st.session_state.confirm_delete == int(row["id"]):
-                    st.warning("Are you sure you want to delete this entry? This cannot be undone.")
-                    dcol1, dcol2 = st.columns(2)
-                    with dcol1:
-                        if st.button("🗑️ Yes, delete it", key=f"del_confirm_{row['id']}"):
-                            delete_row(int(row["id"]))
-                            st.session_state.confirm_delete = None
-                            st.rerun()
-                    with dcol2:
-                        if st.button("Cancel", key=f"del_cancel_{row['id']}"):
-                            st.session_state.confirm_delete = None
-                            st.rerun()
-                else:
-                    acol1, acol2 = st.columns(2)
-                    with acol1:
-                        if st.button("✏️ Edit my entry", key=f"edit_btn_{row['id']}"):
-                            st.session_state.editing_id = int(row["id"])
-                    with acol2:
-                        if st.button("🗑️ Delete my entry", key=f"del_btn_{row['id']}"):
-                            st.session_state.confirm_delete = int(row["id"])
-                            st.rerun()
+            if topic_df.empty:
+                st.markdown(
+                    '<p style="color:#6b7a99;font-size:.88rem;margin:.2rem 0 .8rem .3rem;">'
+                    'No entries yet — be the first to add one!</p>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                for _, row in topic_df.iterrows():
+                    edited_line = ""
+                    if str(row.get("last_edited_by","")).strip() not in ("","nan"):
+                        edited_line = (
+                            f'<span>✏️ Last edited by <strong>{row["last_edited_by"]}</strong>'
+                            f' on {row["last_edited_on"]} (edit #{int(row["edit_count"])})</span>'
+                        )
 
-            if is_other_logged_in:
-                if st.button("✏️ Edit this entry", key=f"edit_btn_{row['id']}"):
-                    st.session_state.editing_id = int(row["id"])
+                    st.markdown(
+                        f'<div class="bp-card" style="border-left:5px solid {colour};">'
+                        f'<div class="bp-practice">{row["practice"]}</div>'
+                        f'<div class="bp-rationale">{row["rationale"]}</div>'
+                        f'<div class="bp-meta">'
+                        f'<span>➕ Added by <strong>{row["added_by"]}</strong> on {row["added_on"]}</span>'
+                        f'{edited_line}'
+                        f'</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
-            if st.session_state.editing_id == int(row["id"]):
-                with st.form(key=f"edit_form_{row['id']}"):
-                    st.markdown(f"**Editing entry #{row['id']}**")
-                    # FIX 4 — "Best Practice" label instead of "Category"
-                    new_topic = st.selectbox("Best Practice", TOPICS,
-                                            index=TOPICS.index(row["category"])
-                                            if row["category"] in TOPICS else 0)
-                    new_practice  = st.text_area("Practice",              value=row["practice"],  height=80)
-                    new_rationale = st.text_area("Rationale / Explanation", value=row["rationale"], height=100)
-                    ecol1, ecol2  = st.columns(2)
-                    with ecol1:
-                        submitted = st.form_submit_button("💾 Save Changes", type="primary")
-                    with ecol2:
-                        cancelled = st.form_submit_button("Cancel")
+                    is_author = (
+                        logged_in and
+                        st.session_state.student_name == row["added_by"]
+                    )
+                    is_other_logged_in = (
+                        logged_in and
+                        st.session_state.student_name != row["added_by"]
+                    )
 
-                    if submitted:
-                        if not new_practice.strip():
-                            st.error("The practice field cannot be empty.")
+                    if is_author:
+                        if st.session_state.confirm_delete == int(row["id"]):
+                            st.warning("Are you sure you want to delete this entry? This cannot be undone.")
+                            dcol1, dcol2 = st.columns(2)
+                            with dcol1:
+                                if st.button("🗑️ Yes, delete it", key=f"del_confirm_{row['id']}"):
+                                    delete_row(int(row["id"]))
+                                    st.session_state.confirm_delete = None
+                                    st.rerun()
+                            with dcol2:
+                                if st.button("Cancel", key=f"del_cancel_{row['id']}"):
+                                    st.session_state.confirm_delete = None
+                                    st.rerun()
                         else:
-                            update_row(int(row["id"]), {
-                                "category":       new_topic,
-                                "practice":       new_practice.strip(),
-                                "rationale":      new_rationale.strip(),
-                                "last_edited_by": st.session_state.student_name,
-                                "last_edited_on": now_str(),
-                                "edit_count":     int(row["edit_count"]) + 1,
-                            })
-                            st.session_state.editing_id = None
-                            st.success("✅ Entry updated successfully!")
-                            st.rerun()
-                    if cancelled:
-                        st.session_state.editing_id = None
-                        st.rerun()
+                            acol1, acol2 = st.columns(2)
+                            with acol1:
+                                if st.button("✏️ Edit my entry", key=f"edit_btn_{row['id']}"):
+                                    st.session_state.editing_id = int(row["id"])
+                            with acol2:
+                                if st.button("🗑️ Delete my entry", key=f"del_btn_{row['id']}"):
+                                    st.session_state.confirm_delete = int(row["id"])
+                                    st.rerun()
+
+                    if is_other_logged_in:
+                        if st.button("✏️ Edit this entry", key=f"edit_btn_{row['id']}"):
+                            st.session_state.editing_id = int(row["id"])
+
+                    if st.session_state.editing_id == int(row["id"]):
+                        with st.form(key=f"edit_form_{row['id']}"):
+                            st.markdown(f"**Editing entry #{row['id']}**")
+                            new_topic = st.selectbox("Best Practice", TOPICS,
+                                                    index=TOPICS.index(row["category"])
+                                                    if row["category"] in TOPICS else 0)
+                            new_practice  = st.text_area("Practice",               value=row["practice"],  height=80)
+                            new_rationale = st.text_area("Rationale / Explanation", value=row["rationale"], height=100)
+                            ecol1, ecol2  = st.columns(2)
+                            with ecol1:
+                                submitted = st.form_submit_button("💾 Save Changes", type="primary")
+                            with ecol2:
+                                cancelled = st.form_submit_button("Cancel")
+
+                            if submitted:
+                                if not new_practice.strip():
+                                    st.error("The practice field cannot be empty.")
+                                else:
+                                    update_row(int(row["id"]), {
+                                        "category":       new_topic,
+                                        "practice":       new_practice.strip(),
+                                        "rationale":      new_rationale.strip(),
+                                        "last_edited_by": st.session_state.student_name,
+                                        "last_edited_on": now_str(),
+                                        "edit_count":     int(row["edit_count"]) + 1,
+                                    })
+                                    st.session_state.editing_id = None
+                                    st.success("✅ Entry updated successfully!")
+                                    st.rerun()
+                            if cancelled:
+                                st.session_state.editing_id = None
+                                st.rerun()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 2 — ADD
