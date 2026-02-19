@@ -35,6 +35,9 @@ def load_data() -> pd.DataFrame:
         for col in COLUMNS:
             if col not in df.columns:
                 df[col] = ""
+        # coerce string columns so NaN floats don't break .str accessor
+        for col in ["last_edited_by", "last_edited_on", "added_by", "category", "practice", "rationale"]:
+            df[col] = df[col].fillna("").astype(str)
         return df
     # seed with a starter example so the list is never empty
     seed = pd.DataFrame([{
@@ -70,7 +73,7 @@ def contribution_summary(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
     added = df.groupby("added_by").size().reset_index(name="Entries Added")
     edited = (
-        df[df["last_edited_by"].str.strip() != ""]
+        df[df["last_edited_by"].astype(str).str.strip().isin(["", "nan"]) == False]
         .groupby("last_edited_by")
         .size()
         .reset_index(name="Entries Edited")
