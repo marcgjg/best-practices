@@ -34,7 +34,7 @@ def get_supabase() -> Client:
 supabase       = get_supabase()
 TABLE          = "best_practices"
 CLASSES        = ["GOMBA 2025 F1", "GOMBA 2025 F2"]
-ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "GeoffWood2005!")
+ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 def load_data(class_name: str) -> pd.DataFrame:
@@ -87,7 +87,7 @@ def contribution_summary(df: pd.DataFrame) -> pd.DataFrame:
 # ── Session state ─────────────────────────────────────────────────────────────
 if "student_name"   not in st.session_state: st.session_state.student_name   = ""
 if "student_email"  not in st.session_state: st.session_state.student_email  = ""
-if "student_class"  not in st.session_state: st.session_state.student_class  = CLASSES[0]
+if "student_class"  not in st.session_state: st.session_state.student_class  = ""
 if "editing_id"     not in st.session_state: st.session_state.editing_id     = None
 if "adding_concept" not in st.session_state: st.session_state.adding_concept = None
 if "submitting"     not in st.session_state: st.session_state.submitting     = False
@@ -150,25 +150,28 @@ with st.sidebar:
     email_input = st.text_input("IE University email",
                                 value=st.session_state.student_email,
                                 placeholder=f"e.g. jsmith{IE_DOMAIN}")
-    class_input = st.selectbox("Your class", CLASSES,
-                               index=CLASSES.index(st.session_state.student_class)
-                               if st.session_state.student_class in CLASSES else 0)
+    class_options = ["— select your class —"] + CLASSES
+    class_input = st.selectbox("Your class", class_options,
+                               index=class_options.index(st.session_state.student_class)
+                               if st.session_state.student_class in class_options else 0)
     if name_input:
         st.session_state.student_name  = name_input.strip()
     if email_input:
         st.session_state.student_email = email_input.strip().lower()
-    st.session_state.student_class = class_input
+    if class_input != "— select your class —":
+        st.session_state.student_class = class_input
 
     logged_in = (
         bool(st.session_state.student_name) and
-        valid_ie_email(st.session_state.student_email)
+        valid_ie_email(st.session_state.student_email) and
+        st.session_state.student_class in CLASSES
     )
     if logged_in:
         st.success(f"Logged in as **{st.session_state.student_name}** · {st.session_state.student_class}")
     elif st.session_state.student_email and not valid_ie_email(st.session_state.student_email):
         st.error(f"Please use your IE University email ({IE_DOMAIN})")
     else:
-        st.warning("Enter your name and IE email to participate.")
+        st.warning("Enter your name, IE email and class to participate.")
 
     st.markdown("---")
     st.markdown("### 📌 About this tool")
