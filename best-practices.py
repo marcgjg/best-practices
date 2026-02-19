@@ -302,13 +302,14 @@ with tab1:
 
             if logged_in:
                 is_author = st.session_state.student_name == row["added_by"]
+                editing   = st.session_state.editing_id == int(row["id"])
 
-                # ── Edit form (open for everyone) ─────────────────────────────
-                if st.session_state.editing_id == int(row["id"]):
+                if editing:
+                    # ── Inline edit form (open for everyone) ─────────────────
                     with st.form(key=f"edit_form_{row['id']}"):
-                        new_content   = st.text_area("Best Practice",
-                                                     value=row["practice"], height=200)
-                        ecol1, ecol2  = st.columns(2)
+                        new_content  = st.text_area("Best Practice",
+                                                    value=row["practice"], height=200)
+                        ecol1, ecol2 = st.columns(2)
                         with ecol1:
                             save_btn = st.form_submit_button("💾 Save Changes", type="primary")
                         with ecol2:
@@ -317,6 +318,10 @@ with tab1:
                         if save_btn:
                             if not new_content.strip():
                                 st.error("The Best Practice field cannot be empty.")
+                            elif new_content.strip() == row["practice"].strip():
+                                st.session_state.editing_id = None
+                                st.info("No changes were made.")
+                                st.rerun()
                             else:
                                 update_row(int(row["id"]), {
                                     "practice":       new_content.strip(),
@@ -332,7 +337,7 @@ with tab1:
                             st.rerun()
 
                 elif is_author:
-                    # Author: Edit + Delete buttons
+                    # ── Author: Edit + Delete buttons (unique keys) ───────────
                     if st.session_state.confirm_delete == int(row["id"]):
                         st.warning("Are you sure you want to delete this entry? This cannot be undone.")
                         dcol1, dcol2 = st.columns(2)
@@ -348,16 +353,19 @@ with tab1:
                     else:
                         acol1, acol2 = st.columns(2)
                         with acol1:
-                            if st.button("✏️ Edit my entry", key=f"edit_btn_{row['id']}"):
+                            if st.button("✏️ Edit my entry", key=f"author_edit_btn_{row['id']}"):
                                 st.session_state.editing_id = int(row["id"])
+                                st.rerun()
                         with acol2:
                             if st.button("🗑️ Delete my entry", key=f"del_btn_{row['id']}"):
                                 st.session_state.confirm_delete = int(row["id"])
                                 st.rerun()
+
                 else:
-                    # Other students: Edit button only
-                    if st.button("✏️ Edit this entry", key=f"edit_btn_{row['id']}"):
+                    # ── Other students: Edit button (unique key) ──────────────
+                    if st.button("✏️ Edit this entry", key=f"other_edit_btn_{row['id']}"):
                         st.session_state.editing_id = int(row["id"])
+                        st.rerun()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 2 — CONTRIBUTIONS
