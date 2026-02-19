@@ -242,7 +242,7 @@ with tab1:
                 st.session_state.student_name != row["added_by"]
             )
             if is_author:
-                # Delete flow — ask for confirmation before removing
+                # Author gets both Edit and Delete buttons side by side
                 if st.session_state.confirm_delete == int(row["id"]):
                     st.warning("Are you sure you want to delete this entry? This cannot be undone.")
                     dcol1, dcol2 = st.columns(2)
@@ -256,9 +256,14 @@ with tab1:
                             st.session_state.confirm_delete = None
                             st.rerun()
                 else:
-                    if st.button("🗑️ Delete my entry", key=f"del_btn_{row['id']}"):
-                        st.session_state.confirm_delete = int(row["id"])
-                        st.rerun()
+                    acol1, acol2 = st.columns(2)
+                    with acol1:
+                        if st.button("✏️ Edit my entry", key=f"edit_btn_{row['id']}"):
+                            st.session_state.editing_id = int(row["id"])
+                    with acol2:
+                        if st.button("🗑️ Delete my entry", key=f"del_btn_{row['id']}"):
+                            st.session_state.confirm_delete = int(row["id"])
+                            st.rerun()
 
             if is_other_logged_in:
                 if st.button("✏️ Edit this entry", key=f"edit_btn_{row['id']}"):
