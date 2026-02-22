@@ -343,7 +343,7 @@ with tab1:
                     original_text = st.session_state[snap_key]
 
                     # Conflict warning shown OUTSIDE the form so it survives rerun
-                    if st.session_state.conflict_warning == row_id_int:
+                    if st.session_state.get("conflict_warning") == row_id_int:
                         live_w  = fetch_row(row_id_int)
                         editor  = (live_w.get("last_edited_by") or "a classmate") if live_w else "a classmate"
                         current = live_w["practice"] if live_w else ""
@@ -353,7 +353,7 @@ with tab1:
                             f"re-open the form if you still want to make changes."
                         )
                         st.markdown(f"> {current}")
-                        st.session_state.conflict_warning = None
+                        st.session_state["conflict_warning"] = None
 
                     with st.form(key=f"edit_form_{row['id']}"):
                         new_content  = st.text_area("Best Practice",
@@ -399,7 +399,7 @@ with tab1:
                                         st.rerun()
                                     else:
                                         # Store conflict flag — warning shown outside form on next render
-                                        st.session_state.conflict_warning = row_id_int
+                                        st.session_state["conflict_warning"] = row_id_int
                                         st.session_state.editing_id = None
                                         st.session_state.pop(snap_key, None)
                                         st.session_state.pop(snap_for, None)
