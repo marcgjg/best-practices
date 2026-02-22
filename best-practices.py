@@ -99,7 +99,6 @@ if "submitting"     not in st.session_state: st.session_state.submitting     = F
 if "confirm_delete"      not in st.session_state: st.session_state.confirm_delete      = None
 if "admin_authenticated" not in st.session_state: st.session_state.admin_authenticated = False
 if "confirm_reset"       not in st.session_state: st.session_state.confirm_reset       = None
-if "edit_count_snapshot" not in st.session_state: st.session_state.edit_count_snapshot = None
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -321,6 +320,12 @@ with tab1:
                 editing   = st.session_state.editing_id == int(row["id"])
 
                 if editing:
+                    # ── Store snapshot once when form first renders ───────────
+                    # Use a per-row key so it is not overwritten on reruns
+                    snap_key = f"snap_{row['id']}"
+                    if snap_key not in st.session_state:
+                        st.session_state[snap_key] = int(row["edit_count"])
+
                     # ── Inline edit form (open for everyone) ─────────────────
                     with st.form(key=f"edit_form_{row['id']}"):
                         new_content  = st.text_area("Best Practice",
@@ -338,24 +343,18 @@ with tab1:
                                 # Always re-fetch from DB at save time —
                                 # this is the authoritative current state
                                 live = fetch_row(int(row["id"]))
-                                with st.expander("🔍 Debug info (remove before go-live)"):
-                                    st.write("Snapshot at form open:", st.session_state.edit_count_snapshot)
-                                    st.write("Live edit_count now:", int(live["edit_count"]) if live else "N/A")
-                                    st.write("row edit_count (render-time):", int(row["edit_count"]))
-                                    st.write("Last edited by:", live.get("last_edited_by") if live else "N/A")
                                 if live is None:
                                     st.error("This entry no longer exists. It may have been deleted.")
-                                    st.session_state.editing_id          = None
-                                    st.session_state.edit_count_snapshot = None
+                                    st.session_state.editing_id = None
+                                    st.session_state.pop(snap_key, None)
                                     st.rerun()
                                 elif new_content.strip() == live["practice"].strip():
                                     # Text matches what is currently in the DB — nothing to do
-                                    st.session_state.editing_id          = None
-                                    st.session_state.edit_count_snapshot = None
+                                    st.session_state.editing_id = None
+                                    st.session_state.pop(snap_key, None)
                                     st.info("No changes were made.")
                                     st.rerun()
-                                elif (st.session_state.edit_count_snapshot is not None and
-                                        int(live["edit_count"]) != st.session_state.edit_count_snapshot):
+                                elif int(live["edit_count"]) != st.session_state.get(snap_key):
                                     # edit_count changed since form was opened → concurrent edit
                                     editor = live.get("last_edited_by") or "a classmate"
                                     st.warning(
@@ -365,8 +364,8 @@ with tab1:
                                         f"want to make changes."
                                     )
                                     st.markdown(f"> {live['practice']}")
-                                    st.session_state.editing_id          = None
-                                    st.session_state.edit_count_snapshot = None
+                                    st.session_state.editing_id = None
+                                    st.session_state.pop(snap_key, None)
                                     st.rerun()
                                 else:
                                     # Safe to write — use live edit_count as base
@@ -376,12 +375,13 @@ with tab1:
                                         "last_edited_on": now_str(),
                                         "edit_count":     int(live["edit_count"]) + 1,
                                     })
-                                    st.session_state.editing_id          = None
-                                    st.session_state.edit_count_snapshot = None
+                                    st.session_state.editing_id = None
+                                    st.session_state.pop(snap_key, None)
                                     st.success("✅ Entry updated successfully!")
                                     st.rerun()
                         if cancel_btn:
                             st.session_state.editing_id = None
+                            st.session_state.pop(snap_key, None)
                             st.rerun()
 
                 elif is_author:
@@ -403,7 +403,6 @@ with tab1:
                         with acol1:
                             if st.button("✏️ Edit my entry", key=f"author_edit_btn_{row['id']}"):
                                 st.session_state.editing_id         = int(row["id"])
-                                st.session_state.edit_count_snapshot = int(row["edit_count"])
                                 st.rerun()
                         with acol2:
                             if st.button("🗑️ Delete my entry", key=f"del_btn_{row['id']}"):
@@ -413,8 +412,7 @@ with tab1:
                 else:
                     # ── Other students: Edit button (unique key) ──────────────
                     if st.button("✏️ Edit this entry", key=f"other_edit_btn_{row['id']}"):
-                        st.session_state.editing_id          = int(row["id"])
-                        st.session_state.edit_count_snapshot = int(row["edit_count"])
+                        st.session_state.editing_id = int(row["id"])
                         st.rerun()
 
 # ─────────────────────────────────────────────────────────────────────────────
