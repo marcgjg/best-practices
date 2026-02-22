@@ -377,6 +377,14 @@ with tab1:
                                     st.session_state.pop(snap_for, None)
                                     st.rerun()
                                 else:
+                                    # ── DEBUG (remove before go-live) ─────
+                                    with st.expander("🔍 Debug"):
+                                        st.write("original_text (snapshot):", repr(original_text[:60]))
+                                        st.write("live practice:", repr(live["practice"][:60]))
+                                        st.write("new_content:", repr(new_content.strip()[:60]))
+                                        st.write("snap_for:", st.session_state.get(snap_for))
+                                        st.write("row_id_int:", row_id_int)
+                                        st.write("match?", live["practice"].strip() == original_text.strip())
                                     saved = conditional_update_row(
                                         row_id_int,
                                         original_text.strip(),
