@@ -57,6 +57,11 @@ def insert_row(row: dict):
 def update_row(row_id: int, updates: dict):
     supabase.table(TABLE).update(updates).eq("id", row_id).execute()
 
+def fetch_row(row_id: int) -> dict | None:
+    """Re-fetch a single row from the DB to detect concurrent edits."""
+    res = supabase.table(TABLE).select("*").eq("id", row_id).execute()
+    return res.data[0] if res.data else None
+
 def delete_row(row_id: int):
     supabase.table(TABLE).delete().eq("id", row_id).execute()
 
@@ -94,6 +99,7 @@ if "submitting"     not in st.session_state: st.session_state.submitting     = F
 if "confirm_delete"      not in st.session_state: st.session_state.confirm_delete      = None
 if "admin_authenticated" not in st.session_state: st.session_state.admin_authenticated = False
 if "confirm_reset"       not in st.session_state: st.session_state.confirm_reset       = None
+if "edit_count_snapshot" not in st.session_state: st.session_state.edit_count_snapshot = None
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -329,19 +335,38 @@ with tab1:
                             if not new_content.strip():
                                 st.error("The Best Practice field cannot be empty.")
                             elif new_content.strip() == row["practice"].strip():
-                                st.session_state.editing_id = None
+                                st.session_state.editing_id          = None
+                                st.session_state.edit_count_snapshot = None
                                 st.info("No changes were made.")
                                 st.rerun()
                             else:
-                                update_row(int(row["id"]), {
-                                    "practice":       new_content.strip(),
-                                    "last_edited_by": st.session_state.student_name,
-                                    "last_edited_on": now_str(),
-                                    "edit_count":     int(row["edit_count"]) + 1,
-                                })
-                                st.session_state.editing_id = None
-                                st.success("✅ Entry updated successfully!")
-                                st.rerun()
+                                # ── Concurrent-edit check ─────────────────────────
+                                live = fetch_row(int(row["id"]))
+                                if (live is not None and
+                                        int(live["edit_count"]) != st.session_state.edit_count_snapshot):
+                                    editor = live.get("last_edited_by") or "a classmate"
+                                    st.warning(
+                                        f"⚠️ This entry was edited by **{editor}** while you had "
+                                        f"the form open. The current text is shown below — please "
+                                        f"review it and re-apply your changes if still needed."
+                                    )
+                                    st.markdown(
+                                        f"> {live['practice']}",
+                                    )
+                                    st.session_state.editing_id          = None
+                                    st.session_state.edit_count_snapshot = None
+                                    st.rerun()
+                                else:
+                                    update_row(int(row["id"]), {
+                                        "practice":       new_content.strip(),
+                                        "last_edited_by": st.session_state.student_name,
+                                        "last_edited_on": now_str(),
+                                        "edit_count":     int(row["edit_count"]) + 1,
+                                    })
+                                    st.session_state.editing_id          = None
+                                    st.session_state.edit_count_snapshot = None
+                                    st.success("✅ Entry updated successfully!")
+                                    st.rerun()
                         if cancel_btn:
                             st.session_state.editing_id = None
                             st.rerun()
@@ -364,7 +389,8 @@ with tab1:
                         acol1, acol2 = st.columns(2)
                         with acol1:
                             if st.button("✏️ Edit my entry", key=f"author_edit_btn_{row['id']}"):
-                                st.session_state.editing_id = int(row["id"])
+                                st.session_state.editing_id         = int(row["id"])
+                                st.session_state.edit_count_snapshot = int(row["edit_count"])
                                 st.rerun()
                         with acol2:
                             if st.button("🗑️ Delete my entry", key=f"del_btn_{row['id']}"):
@@ -374,7 +400,8 @@ with tab1:
                 else:
                     # ── Other students: Edit button (unique key) ──────────────
                     if st.button("✏️ Edit this entry", key=f"other_edit_btn_{row['id']}"):
-                        st.session_state.editing_id = int(row["id"])
+                        st.session_state.editing_id          = int(row["id"])
+                        st.session_state.edit_count_snapshot = int(row["edit_count"])
                         st.rerun()
 
 # ─────────────────────────────────────────────────────────────────────────────
