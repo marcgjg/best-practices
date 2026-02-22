@@ -234,24 +234,6 @@ tab1, tab2, tab3 = st.tabs(["📋 Best Practices List", "🏆 Contributions", "�
 # TAB 1 — BEST PRACTICES LIST (add inline if empty, edit/delete if filled)
 # ─────────────────────────────────────────────────────────────────────────────
 with tab1:
-    # ── Persistent debug panel ───────────────────────────────────────────
-    if st.session_state.get("dbg_new"):
-        st.error("🔍 DEBUG INFO (from last Save press — remove before go-live)")
-        st.write("**new_content:**", st.session_state["dbg_new"])
-        st.write("**original_text (snapshot):**", st.session_state["dbg_orig"])
-        st.write("**snap_for:**", st.session_state["dbg_snap_for"],
-                 "**row_id_int:**", st.session_state["dbg_row_id"])
-        st.write("**same?**", st.session_state["dbg_new"] == st.session_state["dbg_orig"])
-        if st.session_state.get("dbg_saved") is not None:
-            st.write("**saved (conditional_update returned):**", st.session_state["dbg_saved"])
-            st.write("**live text at save time:**", st.session_state.get("dbg_live_text"))
-            st.write("**original_text hex:**", st.session_state.get("dbg_orig_hex"))
-            st.write("**live text hex:**",     st.session_state.get("dbg_live_hex"))
-        if st.button("Clear debug"):
-            for k in ["dbg_new","dbg_orig","dbg_snap_for","dbg_row_id"]:
-                st.session_state.pop(k, None)
-            st.rerun()
-
     # Build a lookup: concept → row (or None)
     concept_map = {}
     for concept in CONCEPTS:
@@ -351,21 +333,28 @@ with tab1:
                 editing   = st.session_state.editing_id == int(row["id"])
 
                 if editing:
-                    # ── Snapshot via st.session_state, written ONCE and
-                    # protected against overwrite by using a version counter.
-                    # We store both the text AND the editing_id it belongs to,
-                    # so switching rows always resets the snapshot.
-                    snap_key  = "orig_text"
-                    snap_for  = "orig_for_id"
+                    snap_key   = "orig_text"
+                    snap_for   = "orig_for_id"
                     row_id_int = int(row["id"])
                     if st.session_state.get(snap_for) != row_id_int:
-                        # First render for THIS row — fetch live text from DB
                         live_now = fetch_row(row_id_int)
                         st.session_state[snap_key] = live_now["practice"] if live_now else row["practice"]
                         st.session_state[snap_for] = row_id_int
                     original_text = st.session_state[snap_key]
 
-                    # ── Inline edit form ──────────────────────────────────────
+                    # Conflict warning shown OUTSIDE the form so it survives rerun
+                    if st.session_state.conflict_warning == row_id_int:
+                        live_w  = fetch_row(row_id_int)
+                        editor  = (live_w.get("last_edited_by") or "a classmate") if live_w else "a classmate"
+                        current = live_w["practice"] if live_w else ""
+                        st.warning(
+                            f"⚠️ This entry was edited by **{editor}** while you had the "
+                            f"form open. The latest version is shown below — please "
+                            f"re-open the form if you still want to make changes."
+                        )
+                        st.markdown(f"> {current}")
+                        st.session_state.conflict_warning = None
+
                     with st.form(key=f"edit_form_{row['id']}"):
                         new_content  = st.text_area("Best Practice",
                                                     value=original_text, height=200)
@@ -376,12 +365,6 @@ with tab1:
                             cancel_btn = st.form_submit_button("Cancel")
 
                         if save_btn:
-                            # DEBUG — store values in session state so they
-                            # survive the rerun and stay visible on screen
-                            st.session_state["dbg_new"]      = repr(new_content.strip()[:120])
-                            st.session_state["dbg_orig"]     = repr(original_text.strip()[:120])
-                            st.session_state["dbg_snap_for"] = st.session_state.get(snap_for)
-                            st.session_state["dbg_row_id"]   = row_id_int
                             if not new_content.strip():
                                 st.error("The Best Practice field cannot be empty.")
                             elif new_content.strip() == original_text.strip():
@@ -391,8 +374,6 @@ with tab1:
                                 st.info("No changes were made.")
                                 st.rerun()
                             else:
-                                # Atomic conditional write — only succeeds if DB
-                                # text still matches original_text (snapshot)
                                 live = fetch_row(row_id_int)
                                 if live is None:
                                     st.error("This entry no longer exists. It may have been deleted.")
@@ -401,14 +382,6 @@ with tab1:
                                     st.session_state.pop(snap_for, None)
                                     st.rerun()
                                 else:
-                                    # ── DEBUG (remove before go-live) ─────
-                                    with st.expander("🔍 Debug"):
-                                        st.write("original_text (snapshot):", repr(original_text[:60]))
-                                        st.write("live practice:", repr(live["practice"][:60]))
-                                        st.write("new_content:", repr(new_content.strip()[:60]))
-                                        st.write("snap_for:", st.session_state.get(snap_for))
-                                        st.write("row_id_int:", row_id_int)
-                                        st.write("match?", live["practice"].strip() == original_text.strip())
                                     saved = conditional_update_row(
                                         row_id_int,
                                         original_text.strip(),
@@ -419,27 +392,18 @@ with tab1:
                                             "edit_count":     int(live["edit_count"]) + 1,
                                         }
                                     )
-                                    st.session_state["dbg_saved"]     = saved
-                                    st.session_state["dbg_live_text"] = repr(live["practice"].strip()[:120])
-                                    st.session_state["dbg_orig_hex"]  = original_text.strip().encode().hex()[:80]
-                                    st.session_state["dbg_live_hex"]  = live["practice"].strip().encode().hex()[:80]
-                                    st.session_state.editing_id = None
-                                    st.session_state.pop(snap_key, None)
-                                    st.session_state.pop(snap_for, None)
                                     if saved:
-                                        st.success("✅ Entry updated successfully!")
+                                        st.session_state.editing_id = None
+                                        st.session_state.pop(snap_key, None)
+                                        st.session_state.pop(snap_for, None)
+                                        st.rerun()
                                     else:
-                                        live2  = fetch_row(row_id_int)
-                                        editor = (live2.get("last_edited_by") or "a classmate") if live2 else "a classmate"
-                                        current = live2["practice"] if live2 else ""
-                                        st.warning(
-                                            f"⚠️ This entry was edited by **{editor}** while "
-                                            f"you had the form open. The latest version is "
-                                            f"shown below — please re-open the form if you "
-                                            f"still want to make changes."
-                                        )
-                                        st.markdown(f"> {current}")
-                                    st.rerun()
+                                        # Store conflict flag — warning shown outside form on next render
+                                        st.session_state.conflict_warning = row_id_int
+                                        st.session_state.editing_id = None
+                                        st.session_state.pop(snap_key, None)
+                                        st.session_state.pop(snap_for, None)
+                                        st.rerun()
                         if cancel_btn:
                             st.session_state.editing_id = None
                             st.session_state.pop(snap_key, None)
