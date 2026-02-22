@@ -320,16 +320,24 @@ with tab1:
                 editing   = st.session_state.editing_id == int(row["id"])
 
                 if editing:
-                    # ── Store snapshot once when form first renders ───────────
-                    # Use a per-row key so it is not overwritten on reruns
-                    snap_key = f"snap_{row['id']}"
+                    # ── Snapshot: store the text that was in the DB when the
+                    # form opened. We embed it as a hidden field inside the
+                    # form so Streamlit returns it unchanged with every submit.
+                    snap_key = f"snap_text_{row['id']}"
                     if snap_key not in st.session_state:
-                        st.session_state[snap_key] = int(row["edit_count"])
+                        # First render — capture current DB text
+                        live_now = fetch_row(int(row["id"]))
+                        st.session_state[snap_key] = live_now["practice"] if live_now else row["practice"]
 
                     # ── Inline edit form (open for everyone) ─────────────────
                     with st.form(key=f"edit_form_{row['id']}"):
                         new_content  = st.text_area("Best Practice",
-                                                    value=row["practice"], height=200)
+                                                    value=st.session_state[snap_key], height=200)
+                        # Hidden field carries the snapshot through every rerun
+                        original_text = st.text_input("__original__",
+                                                      value=st.session_state[snap_key],
+                                                      label_visibility="collapsed",
+                                                      key=f"orig_{row['id']}")
                         ecol1, ecol2 = st.columns(2)
                         with ecol1:
                             save_btn = st.form_submit_button("💾 Save Changes", type="primary")
@@ -339,23 +347,22 @@ with tab1:
                         if save_btn:
                             if not new_content.strip():
                                 st.error("The Best Practice field cannot be empty.")
+                            elif new_content.strip() == original_text.strip():
+                                # Student did not change anything
+                                st.session_state.editing_id = None
+                                st.session_state.pop(snap_key, None)
+                                st.info("No changes were made.")
+                                st.rerun()
                             else:
-                                # Always re-fetch from DB at save time —
-                                # this is the authoritative current state
+                                # Re-fetch to check for concurrent edits
                                 live = fetch_row(int(row["id"]))
                                 if live is None:
                                     st.error("This entry no longer exists. It may have been deleted.")
                                     st.session_state.editing_id = None
                                     st.session_state.pop(snap_key, None)
                                     st.rerun()
-                                elif new_content.strip() == live["practice"].strip():
-                                    # Text matches what is currently in the DB — nothing to do
-                                    st.session_state.editing_id = None
-                                    st.session_state.pop(snap_key, None)
-                                    st.info("No changes were made.")
-                                    st.rerun()
-                                elif int(live["edit_count"]) != st.session_state.get(snap_key):
-                                    # edit_count changed since form was opened → concurrent edit
+                                elif live["practice"].strip() != original_text.strip():
+                                    # DB text differs from what student saw when opening form
                                     editor = live.get("last_edited_by") or "a classmate"
                                     st.warning(
                                         f"⚠️ This entry was edited by **{editor}** while you had "
@@ -368,7 +375,7 @@ with tab1:
                                     st.session_state.pop(snap_key, None)
                                     st.rerun()
                                 else:
-                                    # Safe to write — use live edit_count as base
+                                    # Safe to write
                                     update_row(int(row["id"]), {
                                         "practice":       new_content.strip(),
                                         "last_edited_by": st.session_state.student_name,
