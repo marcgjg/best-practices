@@ -358,6 +358,9 @@ with tab1:
                             cancel_btn = st.form_submit_button("Cancel")
 
                         if save_btn:
+                            st.warning(f"DEBUG — new_content: {repr(new_content.strip()[:60])}")
+                            st.warning(f"DEBUG — original_text: {repr(original_text.strip()[:60])}")
+                            st.warning(f"DEBUG — snap_for: {st.session_state.get(snap_for)}, row_id: {row_id_int}")
                             if not new_content.strip():
                                 st.error("The Best Practice field cannot be empty.")
                             elif new_content.strip() == original_text.strip():
