@@ -242,6 +242,11 @@ with tab1:
         st.write("**snap_for:**", st.session_state["dbg_snap_for"],
                  "**row_id_int:**", st.session_state["dbg_row_id"])
         st.write("**same?**", st.session_state["dbg_new"] == st.session_state["dbg_orig"])
+        if st.session_state.get("dbg_saved") is not None:
+            st.write("**saved (conditional_update returned):**", st.session_state["dbg_saved"])
+            st.write("**live text at save time:**", st.session_state.get("dbg_live_text"))
+            st.write("**original_text hex:**", st.session_state.get("dbg_orig_hex"))
+            st.write("**live text hex:**",     st.session_state.get("dbg_live_hex"))
         if st.button("Clear debug"):
             for k in ["dbg_new","dbg_orig","dbg_snap_for","dbg_row_id"]:
                 st.session_state.pop(k, None)
@@ -414,6 +419,10 @@ with tab1:
                                             "edit_count":     int(live["edit_count"]) + 1,
                                         }
                                     )
+                                    st.session_state["dbg_saved"]     = saved
+                                    st.session_state["dbg_live_text"] = repr(live["practice"].strip()[:120])
+                                    st.session_state["dbg_orig_hex"]  = original_text.strip().encode().hex()[:80]
+                                    st.session_state["dbg_live_hex"]  = live["practice"].strip().encode().hex()[:80]
                                     st.session_state.editing_id = None
                                     st.session_state.pop(snap_key, None)
                                     st.session_state.pop(snap_for, None)
