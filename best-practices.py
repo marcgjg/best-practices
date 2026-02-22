@@ -329,31 +329,33 @@ with tab1:
             )
 
             if logged_in:
-                is_author = st.session_state.student_name == row["added_by"]
-                editing   = st.session_state.editing_id == int(row["id"])
+                is_author  = st.session_state.student_name == row["added_by"]
+                editing    = st.session_state.editing_id == int(row["id"])
+                row_id_int = int(row["id"])
+
+                # Conflict warning — shown at card level so it appears
+                # immediately after Save, regardless of editing state
+                if st.session_state.get("conflict_warning") == row_id_int:
+                    live_w  = fetch_row(row_id_int)
+                    editor  = (live_w.get("last_edited_by") or "a classmate") if live_w else "a classmate"
+                    current = live_w["practice"] if live_w else ""
+                    st.warning(
+                        f"⚠️ This entry was edited by **{editor}** while you had the "
+                        f"form open. The latest version is shown below — please "
+                        f"re-open the form if you still want to make changes."
+                    )
+                    st.markdown(f"> {current}")
+                    st.session_state["conflict_warning"] = None
 
                 if editing:
                     snap_key   = "orig_text"
                     snap_for   = "orig_for_id"
-                    row_id_int = int(row["id"])
                     if st.session_state.get(snap_for) != row_id_int:
                         live_now = fetch_row(row_id_int)
                         st.session_state[snap_key] = live_now["practice"] if live_now else row["practice"]
                         st.session_state[snap_for] = row_id_int
                     original_text = st.session_state[snap_key]
 
-                    # Conflict warning shown OUTSIDE the form so it survives rerun
-                    if st.session_state.get("conflict_warning") == row_id_int:
-                        live_w  = fetch_row(row_id_int)
-                        editor  = (live_w.get("last_edited_by") or "a classmate") if live_w else "a classmate"
-                        current = live_w["practice"] if live_w else ""
-                        st.warning(
-                            f"⚠️ This entry was edited by **{editor}** while you had the "
-                            f"form open. The latest version is shown below — please "
-                            f"re-open the form if you still want to make changes."
-                        )
-                        st.markdown(f"> {current}")
-                        st.session_state["conflict_warning"] = None
 
                     with st.form(key=f"edit_form_{row['id']}"):
                         new_content  = st.text_area("Best Practice",
