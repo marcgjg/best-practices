@@ -338,6 +338,11 @@ with tab1:
                                 # Always re-fetch from DB at save time —
                                 # this is the authoritative current state
                                 live = fetch_row(int(row["id"]))
+                                with st.expander("🔍 Debug info (remove before go-live)"):
+                                    st.write("Snapshot at form open:", st.session_state.edit_count_snapshot)
+                                    st.write("Live edit_count now:", int(live["edit_count"]) if live else "N/A")
+                                    st.write("row edit_count (render-time):", int(row["edit_count"]))
+                                    st.write("Last edited by:", live.get("last_edited_by") if live else "N/A")
                                 if live is None:
                                     st.error("This entry no longer exists. It may have been deleted.")
                                     st.session_state.editing_id          = None
