@@ -234,6 +234,19 @@ tab1, tab2, tab3 = st.tabs(["📋 Best Practices List", "🏆 Contributions", "�
 # TAB 1 — BEST PRACTICES LIST (add inline if empty, edit/delete if filled)
 # ─────────────────────────────────────────────────────────────────────────────
 with tab1:
+    # ── Persistent debug panel ───────────────────────────────────────────
+    if st.session_state.get("dbg_new"):
+        st.error("🔍 DEBUG INFO (from last Save press — remove before go-live)")
+        st.write("**new_content:**", st.session_state["dbg_new"])
+        st.write("**original_text (snapshot):**", st.session_state["dbg_orig"])
+        st.write("**snap_for:**", st.session_state["dbg_snap_for"],
+                 "**row_id_int:**", st.session_state["dbg_row_id"])
+        st.write("**same?**", st.session_state["dbg_new"] == st.session_state["dbg_orig"])
+        if st.button("Clear debug"):
+            for k in ["dbg_new","dbg_orig","dbg_snap_for","dbg_row_id"]:
+                st.session_state.pop(k, None)
+            st.rerun()
+
     # Build a lookup: concept → row (or None)
     concept_map = {}
     for concept in CONCEPTS:
@@ -358,9 +371,12 @@ with tab1:
                             cancel_btn = st.form_submit_button("Cancel")
 
                         if save_btn:
-                            st.warning(f"DEBUG — new_content: {repr(new_content.strip()[:60])}")
-                            st.warning(f"DEBUG — original_text: {repr(original_text.strip()[:60])}")
-                            st.warning(f"DEBUG — snap_for: {st.session_state.get(snap_for)}, row_id: {row_id_int}")
+                            # DEBUG — store values in session state so they
+                            # survive the rerun and stay visible on screen
+                            st.session_state["dbg_new"]      = repr(new_content.strip()[:120])
+                            st.session_state["dbg_orig"]     = repr(original_text.strip()[:120])
+                            st.session_state["dbg_snap_for"] = st.session_state.get(snap_for)
+                            st.session_state["dbg_row_id"]   = row_id_int
                             if not new_content.strip():
                                 st.error("The Best Practice field cannot be empty.")
                             elif new_content.strip() == original_text.strip():
