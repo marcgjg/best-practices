@@ -334,34 +334,42 @@ with tab1:
                         if save_btn:
                             if not new_content.strip():
                                 st.error("The Best Practice field cannot be empty.")
-                            elif new_content.strip() == row["practice"].strip():
-                                st.session_state.editing_id          = None
-                                st.session_state.edit_count_snapshot = None
-                                st.info("No changes were made.")
-                                st.rerun()
                             else:
-                                # ── Concurrent-edit check ─────────────────────────
+                                # Always re-fetch from DB at save time —
+                                # this is the authoritative current state
                                 live = fetch_row(int(row["id"]))
-                                if (live is not None and
+                                if live is None:
+                                    st.error("This entry no longer exists. It may have been deleted.")
+                                    st.session_state.editing_id          = None
+                                    st.session_state.edit_count_snapshot = None
+                                    st.rerun()
+                                elif new_content.strip() == live["practice"].strip():
+                                    # Text matches what is currently in the DB — nothing to do
+                                    st.session_state.editing_id          = None
+                                    st.session_state.edit_count_snapshot = None
+                                    st.info("No changes were made.")
+                                    st.rerun()
+                                elif (st.session_state.edit_count_snapshot is not None and
                                         int(live["edit_count"]) != st.session_state.edit_count_snapshot):
+                                    # edit_count changed since form was opened → concurrent edit
                                     editor = live.get("last_edited_by") or "a classmate"
                                     st.warning(
                                         f"⚠️ This entry was edited by **{editor}** while you had "
-                                        f"the form open. The current text is shown below — please "
-                                        f"review it and re-apply your changes if still needed."
+                                        f"the form open. The latest version is shown below — "
+                                        f"please review it and re-open the form if you still "
+                                        f"want to make changes."
                                     )
-                                    st.markdown(
-                                        f"> {live['practice']}",
-                                    )
+                                    st.markdown(f"> {live['practice']}")
                                     st.session_state.editing_id          = None
                                     st.session_state.edit_count_snapshot = None
                                     st.rerun()
                                 else:
+                                    # Safe to write — use live edit_count as base
                                     update_row(int(row["id"]), {
                                         "practice":       new_content.strip(),
                                         "last_edited_by": st.session_state.student_name,
                                         "last_edited_on": now_str(),
-                                        "edit_count":     int(row["edit_count"]) + 1,
+                                        "edit_count":     int(live["edit_count"]) + 1,
                                     })
                                     st.session_state.editing_id          = None
                                     st.session_state.edit_count_snapshot = None
