@@ -62,6 +62,19 @@ def fetch_row(row_id: int) -> dict | None:
     res = supabase.table(TABLE).select("*").eq("id", row_id).execute()
     return res.data[0] if res.data else None
 
+def conditional_update_row(row_id: int, expected_practice: str, updates: dict) -> bool:
+    """Update the row only if practice still matches expected_practice.
+    Returns True if the update was applied, False if it was blocked by a concurrent edit.
+    Uses Supabase .eq() on both id AND practice — so if someone else changed
+    the text in between, zero rows match and nothing is written.
+    """
+    res = (supabase.table(TABLE)
+           .update(updates)
+           .eq("id", row_id)
+           .eq("practice", expected_practice)
+           .execute())
+    return len(res.data) > 0  # True = row was updated, False = text had changed
+
 def delete_row(row_id: int):
     supabase.table(TABLE).delete().eq("id", row_id).execute()
 
@@ -320,25 +333,24 @@ with tab1:
                 editing   = st.session_state.editing_id == int(row["id"])
 
                 if editing:
-                    # ── Snapshot: store the text that was in the DB when the
-                    # form opened. We embed it as a hidden field inside the
-                    # form so Streamlit returns it unchanged with every submit.
-                    snap_key = f"snap_text_{row['id']}"
-                    if snap_key not in st.session_state:
-                        # First render — capture current DB text
-                        live_now = fetch_row(int(row["id"]))
-                        st.session_state[snap_key] = live_now["practice"] if live_now else row["practice"]
-
-                    # ── Inline edit form (open for everyone) ─────────────────
+                    # ── Inline edit form ──────────────────────────────────────
+                    # original_text is a hidden read-only field pre-filled with
+                    # row["practice"]. Because it lives inside the form, Streamlit
+                    # sends back exactly the value the user sees — we pass it to
+                    # conditional_update_row as the expected text. If someone else
+                    # saved a different text between form-open and Save, the
+                    # Supabase .eq("practice", original_text) filter matches zero
+                    # rows and the write is blocked server-side.
                     with st.form(key=f"edit_form_{row['id']}"):
-                        new_content  = st.text_area("Best Practice",
-                                                    value=st.session_state[snap_key], height=200)
-                        # Hidden field carries the snapshot through every rerun
-                        original_text = st.text_input("__original__",
-                                                      value=st.session_state[snap_key],
-                                                      label_visibility="collapsed",
-                                                      key=f"orig_{row['id']}")
-                        ecol1, ecol2 = st.columns(2)
+                        new_content   = st.text_area("Best Practice",
+                                                     value=row["practice"], height=200)
+                        original_text = st.text_area("__original__",
+                                                     value=row["practice"],
+                                                     height=1,
+                                                     disabled=True,
+                                                     label_visibility="collapsed",
+                                                     key=f"orig_{row['id']}")
+                        ecol1, ecol2  = st.columns(2)
                         with ecol1:
                             save_btn = st.form_submit_button("💾 Save Changes", type="primary")
                         with ecol2:
@@ -348,47 +360,45 @@ with tab1:
                             if not new_content.strip():
                                 st.error("The Best Practice field cannot be empty.")
                             elif new_content.strip() == original_text.strip():
-                                # Student did not change anything
                                 st.session_state.editing_id = None
-                                st.session_state.pop(snap_key, None)
                                 st.info("No changes were made.")
                                 st.rerun()
                             else:
-                                # Re-fetch to check for concurrent edits
+                                # Attempt atomic conditional write:
+                                # only succeeds if DB text still matches original_text
                                 live = fetch_row(int(row["id"]))
                                 if live is None:
                                     st.error("This entry no longer exists. It may have been deleted.")
                                     st.session_state.editing_id = None
-                                    st.session_state.pop(snap_key, None)
-                                    st.rerun()
-                                elif live["practice"].strip() != original_text.strip():
-                                    # DB text differs from what student saw when opening form
-                                    editor = live.get("last_edited_by") or "a classmate"
-                                    st.warning(
-                                        f"⚠️ This entry was edited by **{editor}** while you had "
-                                        f"the form open. The latest version is shown below — "
-                                        f"please review it and re-open the form if you still "
-                                        f"want to make changes."
-                                    )
-                                    st.markdown(f"> {live['practice']}")
-                                    st.session_state.editing_id = None
-                                    st.session_state.pop(snap_key, None)
                                     st.rerun()
                                 else:
-                                    # Safe to write
-                                    update_row(int(row["id"]), {
-                                        "practice":       new_content.strip(),
-                                        "last_edited_by": st.session_state.student_name,
-                                        "last_edited_on": now_str(),
-                                        "edit_count":     int(live["edit_count"]) + 1,
-                                    })
+                                    saved = conditional_update_row(
+                                        int(row["id"]),
+                                        original_text.strip(),
+                                        {
+                                            "practice":       new_content.strip(),
+                                            "last_edited_by": st.session_state.student_name,
+                                            "last_edited_on": now_str(),
+                                            "edit_count":     int(live["edit_count"]) + 1,
+                                        }
+                                    )
                                     st.session_state.editing_id = None
-                                    st.session_state.pop(snap_key, None)
-                                    st.success("✅ Entry updated successfully!")
+                                    if saved:
+                                        st.success("✅ Entry updated successfully!")
+                                    else:
+                                        live2 = fetch_row(int(row["id"]))
+                                        editor = (live2.get("last_edited_by") or "a classmate") if live2 else "a classmate"
+                                        current = live2["practice"] if live2 else ""
+                                        st.warning(
+                                            f"⚠️ This entry was edited by **{editor}** while you "
+                                            f"had the form open. The latest version is shown below "
+                                            f"— please review it and re-open the form if you still "
+                                            f"want to make changes."
+                                        )
+                                        st.markdown(f"> {current}")
                                     st.rerun()
                         if cancel_btn:
                             st.session_state.editing_id = None
-                            st.session_state.pop(snap_key, None)
                             st.rerun()
 
                 elif is_author:
