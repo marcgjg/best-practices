@@ -221,8 +221,8 @@ with st.sidebar:
     username_input = st.text_input(
         "IE email username",
         value=stored_username,
-        placeholder="e.g. jsmith",
-        help="Enter the part before @student.ie.edu")
+        placeholder="e.g. jsmith")
+    st.caption("Enter the part before @student.ie.edu")
     email_input = (username_input.strip().lower() + IE_DOMAIN) if username_input.strip() else ""
     class_options = ["— select your class —"] + CLASSES
     class_input   = st.selectbox(
