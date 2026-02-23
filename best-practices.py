@@ -678,16 +678,16 @@ with tab4:
 
         st.markdown("---")
         st.markdown("### 🔀 Class Comparison")
-        current_val = get_setting("cross_class_enabled") == "true"
-        new_val = st.toggle("Enable cross-class comparison tab", value=current_val,
-                            help="When on, all students can see a side-by-side comparison of F1 and F2 entries.")
-        if new_val != current_val:
-            set_setting("cross_class_enabled", "true" if new_val else "false")
-            st.rerun()
-        if current_val:
+        if cross_class_enabled:
             st.success("✅ Cross-class comparison is currently **enabled**.")
+            if st.button("🔒 Disable cross-class comparison", key="btn_disable_cc"):
+                set_setting("cross_class_enabled", "false")
+                st.rerun()
         else:
             st.info("Cross-class comparison is currently **disabled**.")
+            if st.button("🔓 Enable cross-class comparison", key="btn_enable_cc"):
+                set_setting("cross_class_enabled", "true")
+                st.rerun()
 
         st.markdown("---")
         st.markdown("### 🗑️ Reset Concept Boxes")
