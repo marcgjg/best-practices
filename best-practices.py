@@ -35,6 +35,7 @@ def get_supabase() -> Client:
 supabase       = get_supabase()
 TABLE          = "best_practices"
 HISTORY_TABLE  = "edit_history"
+SETTINGS_TABLE = "app_settings"
 CLASSES        = ["GOMBA 2025 F1", "GOMBA 2025 F2"]
 ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
 
@@ -120,6 +121,20 @@ def load_history(class_name: str, category: str | None = None) -> pd.DataFrame:
             "id", "entry_id", "class_name", "category",
             "practice", "edited_by", "edited_on"
         ])
+
+# ── DB helpers — app_settings ───────────────────────────────────────────────
+def get_setting(key: str, default: str = "false") -> str:
+    try:
+        res = supabase.table(SETTINGS_TABLE).select("value").eq("key", key).execute()
+        return res.data[0]["value"] if res.data else default
+    except Exception:
+        return default
+
+def set_setting(key: str, value: str):
+    try:
+        supabase.table(SETTINGS_TABLE).upsert({"key": key, "value": value}).execute()
+    except Exception:
+        pass
 
 # ── Contribution summary ──────────────────────────────────────────────────────
 def contribution_summary(df: pd.DataFrame) -> pd.DataFrame:
@@ -253,6 +268,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 df = load_data(active_class)
+cross_class_enabled = get_setting("cross_class_enabled") == "true"
 
 c1, c2, c3 = st.columns(3)
 c1.metric("📝 Concepts covered",
@@ -264,12 +280,16 @@ st.markdown("---")
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS
 # ══════════════════════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📋 Best Practices List",
-    "🏆 Contributions",
-    "📜 History",
-    "🔐 Admin",
-])
+_tab_labels = ["📋 Best Practices List", "🏆 Contributions", "📜 History"]
+if cross_class_enabled:
+    _tab_labels.append("🔀 Class Comparison")
+_tab_labels.append("🔐 Admin")
+_tabs = st.tabs(_tab_labels)
+tab1 = _tabs[0]
+tab2 = _tabs[1]
+tab3 = _tabs[2]
+tab4 = _tabs[-1]  # Admin is always last
+tab_compare = _tabs[3] if cross_class_enabled else None
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 1 — BEST PRACTICES LIST
@@ -581,6 +601,61 @@ with tab3:
                 )
 
 # ─────────────────────────────────────────────────────────────────────────────
+# TAB — CLASS COMPARISON (only when enabled)
+# ─────────────────────────────────────────────────────────────────────────────
+if cross_class_enabled and tab_compare is not None:
+    with tab_compare:
+        st.markdown("<div class='section-title'>Class Comparison</div>", unsafe_allow_html=True)
+        st.markdown(
+            "Both classes have now completed the exercise. "
+            "Below you can compare each class's best practice for every concept side by side."
+        )
+
+        df_f1 = load_data(CLASSES[0])
+        df_f2 = load_data(CLASSES[1])
+
+        for concept in CONCEPTS:
+            colour = CONCEPT_COLOURS[concept]
+            st.markdown(
+                f'<div style="background:{colour};color:white;font-weight:700;'
+                f'font-size:.85rem;letter-spacing:.6px;text-transform:uppercase;'
+                f'padding:.45rem .9rem;border-radius:6px;margin:1.4rem 0 .6rem;">'
+                f'{concept}</div>',
+                unsafe_allow_html=True,
+            )
+            col_f1, col_f2 = st.columns(2)
+
+            for col, cls, df_cls in [
+                (col_f1, CLASSES[0], df_f1),
+                (col_f2, CLASSES[1], df_f2),
+            ]:
+                with col:
+                    st.markdown(f"**{cls}**")
+                    rows = df_cls[df_cls["category"] == concept]
+                    if rows.empty:
+                        st.markdown(
+                            '<p style="color:#6b7a99;font-size:.88rem;">No entry yet.</p>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        row = rows.iloc[0]
+                        edited_line = ""
+                        if str(row.get("last_edited_by", "")).strip() not in ("", "nan"):
+                            edited_line = (
+                                f'<span>✏️ Last edited by <strong>{row["last_edited_by"]}</strong>'
+                                f' on {row["last_edited_on"]}</span>'
+                            )
+                        st.markdown(
+                            f'<div class="bp-card" style="border-left:5px solid {colour};">'
+                            f'<div class="bp-practice">{row["practice"]}</div>'
+                            f'<div class="bp-meta">'
+                            f'<span>➕ Added by <strong>{row["added_by"]}</strong> on {row["added_on"]}</span>'
+                            f'{edited_line}'
+                            f'</div></div>',
+                            unsafe_allow_html=True,
+                        )
+
+# ─────────────────────────────────────────────────────────────────────────────
 # TAB 4 — ADMIN
 # ─────────────────────────────────────────────────────────────────────────────
 with tab4:
@@ -600,6 +675,19 @@ with tab4:
         if st.button("🔒 Log out", key="admin_logout_btn"):
             st.session_state.admin_authenticated = False
             st.rerun()
+
+        st.markdown("---")
+        st.markdown("### 🔀 Class Comparison")
+        current_val = get_setting("cross_class_enabled") == "true"
+        new_val = st.toggle("Enable cross-class comparison tab", value=current_val,
+                            help="When on, all students can see a side-by-side comparison of F1 and F2 entries.")
+        if new_val != current_val:
+            set_setting("cross_class_enabled", "true" if new_val else "false")
+            st.rerun()
+        if current_val:
+            st.success("✅ Cross-class comparison is currently **enabled**.")
+        else:
+            st.info("Cross-class comparison is currently **disabled**.")
 
         st.markdown("---")
         st.markdown("### 🗑️ Reset Concept Boxes")
