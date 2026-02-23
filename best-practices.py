@@ -218,15 +218,11 @@ with st.sidebar:
     stored_username = st.session_state.student_email.replace(IE_DOMAIN, "") \
                       if st.session_state.student_email.endswith(IE_DOMAIN) \
                       else st.session_state.student_email
-    col_user, col_domain = st.columns([3, 4])
-    with col_user:
-        username_input = st.text_input("IE email username",
-                                       value=stored_username,
-                                       placeholder="e.g. jsmith")
-    with col_domain:
-        st.markdown(
-            f'<div style="padding-top:1.95rem;color:#b0bfd4;font-size:.9rem;">@student.ie.edu</div>',
-            unsafe_allow_html=True)
+    username_input = st.text_input(
+        "IE email username",
+        value=stored_username,
+        placeholder="e.g. jsmith",
+        help="Enter the part before @student.ie.edu")
     email_input = (username_input.strip().lower() + IE_DOMAIN) if username_input.strip() else ""
     class_options = ["— select your class —"] + CLASSES
     class_input   = st.selectbox(
