@@ -82,9 +82,37 @@ def delete_class_data(class_name: str):
     """Delete all rows for a given class — used by admin reset."""
     supabase.table(TABLE).delete().eq("class_name", class_name).execute()
 
+HISTORY_TABLE = "edit_history"
+
 def now_str() -> str:
     madrid = pytz.timezone("Europe/Madrid")
     return datetime.now(madrid).strftime("%Y-%m-%d %H:%M")
+
+def log_history(entry_id: int, class_name: str, category: str,
+                practice: str, edited_by: str, edited_on: str):
+    """Append a revision record to the edit_history table."""
+    supabase.table(HISTORY_TABLE).insert({
+        "entry_id":   entry_id,
+        "class_name": class_name,
+        "category":   category,
+        "practice":   practice,
+        "edited_by":  edited_by,
+        "edited_on":  edited_on,
+    }).execute()
+
+def load_history(class_name: str, category: str | None = None) -> pd.DataFrame:
+    """Load revision history for a class, optionally filtered by concept."""
+    q = (supabase.table(HISTORY_TABLE).select("*")
+         .eq("class_name", class_name)
+         .order("id", desc=True))
+    if category:
+        q = q.eq("category", category)
+    res = q.execute()
+    if not res.data:
+        return pd.DataFrame(columns=[
+            "id","entry_id","class_name","category","practice","edited_by","edited_on"
+        ])
+    return pd.DataFrame(res.data)
 
 def contribution_summary(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -228,7 +256,7 @@ st.markdown("---")
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS — now just two
 # ══════════════════════════════════════════════════════════════════════════════
-tab1, tab2, tab3 = st.tabs(["📋 Best Practices List", "🏆 Contributions", "🔐 Admin"])
+tab1, tab2, tab3, tab4 = st.tabs(["📋 Best Practices List", "🏆 Contributions", "📜 History", "🔐 Admin"])
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 1 — BEST PRACTICES LIST (add inline if empty, edit/delete if filled)
@@ -280,17 +308,32 @@ with tab1:
                             st.error("Please fill in the Best Practice field.")
                         else:
                             st.session_state.submitting = True
+                            ts = now_str()
                             insert_row({
                                 "class_name":     active_class,
                                 "category":       concept,
                                 "practice":       new_content.strip(),
                                 "rationale":      "",
                                 "added_by":       st.session_state.student_name,
-                                "added_on":       now_str(),
+                                "added_on":       ts,
                                 "last_edited_by": "",
                                 "last_edited_on": "",
                                 "edit_count":     0,
                             })
+                            # Fetch the new row to get its id for history
+                            new_row = (supabase.table(TABLE).select("id")
+                                       .eq("class_name", active_class)
+                                       .eq("category", concept)
+                                       .execute())
+                            if new_row.data:
+                                log_history(
+                                    entry_id  = new_row.data[0]["id"],
+                                    class_name= active_class,
+                                    category  = concept,
+                                    practice  = new_content.strip(),
+                                    edited_by = st.session_state.student_name,
+                                    edited_on = ts,
+                                )
                             st.session_state.adding_concept = None
                             st.session_state.submitting     = False
                             st.success(f"✅ Best practice added! Thank you, {st.session_state.student_name}.")
@@ -384,17 +427,26 @@ with tab1:
                                     st.session_state.pop(snap_for, None)
                                     st.rerun()
                                 else:
+                                    ts = now_str()
                                     saved = conditional_update_row(
                                         row_id_int,
                                         original_text.strip(),
                                         {
                                             "practice":       new_content.strip(),
                                             "last_edited_by": st.session_state.student_name,
-                                            "last_edited_on": now_str(),
+                                            "last_edited_on": ts,
                                             "edit_count":     int(live["edit_count"]) + 1,
                                         }
                                     )
                                     if saved:
+                                        log_history(
+                                            entry_id  = row_id_int,
+                                            class_name= active_class,
+                                            category  = row["category"],
+                                            practice  = new_content.strip(),
+                                            edited_by = st.session_state.student_name,
+                                            edited_on = ts,
+                                        )
                                         st.session_state.editing_id = None
                                         st.session_state.pop(snap_key, None)
                                         st.session_state.pop(snap_for, None)
@@ -497,9 +549,45 @@ with tab2:
         st.dataframe(student_df, use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAB 3 — ADMIN
+# TAB 3 — HISTORY
 # ─────────────────────────────────────────────────────────────────────────────
 with tab3:
+    st.markdown("<div class='section-title'>Revision History</div>", unsafe_allow_html=True)
+    st.markdown(
+        "Every version of each entry is recorded here. "
+        "Select a concept to browse its full edit history."
+    )
+
+    hist_concept = st.selectbox(
+        "Concept", ["— all concepts —"] + CONCEPTS, key="hist_concept_select"
+    )
+    selected_concept = None if hist_concept == "— all concepts —" else hist_concept
+
+    hist_df = load_history(active_class, selected_concept)
+
+    if hist_df.empty:
+        st.info("No history recorded yet for this selection.")
+    else:
+        for _, hrow in hist_df.iterrows():
+            colour = CONCEPT_COLOURS.get(hrow["category"], "#4a90d9")
+            rev_num = int(hrow["id"])  # monotonically increasing
+            with st.expander(
+                f"**{hrow['category']}** · {hrow['edited_on']} · {hrow['edited_by']}",
+                expanded=False
+            ):
+                st.markdown(
+                    f'<div class="bp-card" style="border-left:5px solid {colour};">'
+                    f'<div class="bp-practice">{hrow["practice"]}</div>'
+                    f'<div class="bp-meta">'
+                    f'<span>✏️ <strong>{hrow["edited_by"]}</strong> · {hrow["edited_on"]}</span>'
+                    f'</div></div>',
+                    unsafe_allow_html=True
+                )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TAB 4 — ADMIN
+# ─────────────────────────────────────────────────────────────────────────────
+with tab4:
     st.markdown("<div class='section-title'>Admin Panel</div>", unsafe_allow_html=True)
 
     if not st.session_state.admin_authenticated:
