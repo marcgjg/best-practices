@@ -681,13 +681,19 @@ with tab4:
         if cross_class_enabled:
             st.success("✅ Cross-class comparison is currently **enabled**.")
             if st.button("🔒 Disable cross-class comparison", key="btn_disable_cc"):
-                set_setting("cross_class_enabled", "false")
-                st.rerun()
+                try:
+                    supabase.table(SETTINGS_TABLE).upsert({"key": "cross_class_enabled", "value": "false"}).execute()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to save setting: {e}")
         else:
             st.info("Cross-class comparison is currently **disabled**.")
             if st.button("🔓 Enable cross-class comparison", key="btn_enable_cc"):
-                set_setting("cross_class_enabled", "true")
-                st.rerun()
+                try:
+                    supabase.table(SETTINGS_TABLE).upsert({"key": "cross_class_enabled", "value": "true"}).execute()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to save setting: {e}")
 
         st.markdown("---")
         st.markdown("### 🗑️ Reset Concept Boxes")
