@@ -543,22 +543,7 @@ with tab2:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("<div class='section-title'>View a Student's Entries</div>",
-                unsafe_allow_html=True)
-    all_students = sorted(df["added_by"].dropna().unique().tolist()) if not df.empty else []
-    if all_students:
-        selected   = st.selectbox("Select a student", all_students)
-        student_df = df[df["added_by"] == selected][[
-            "category", "practice", "added_on", "last_edited_by", "last_edited_on", "edit_count"
-        ]].rename(columns={
-            "category":       "Concept",
-            "practice":       "Best Practice",
-            "added_on":       "Added On",
-            "last_edited_by": "Last Edited By",
-            "last_edited_on": "Last Edited On",
-            "edit_count":     "# Edits",
-        })
-        st.dataframe(student_df, use_container_width=True)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 3 — HISTORY
