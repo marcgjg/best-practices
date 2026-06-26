@@ -36,7 +36,7 @@ supabase       = get_supabase()
 TABLE          = "best_practices"
 HISTORY_TABLE  = "edit_history"
 SETTINGS_TABLE = "app_settings"
-CLASSES        = ["GOMBA 2025 F1", "GOMBA 2025 F2"]
+CLASSES        = ["GOMBA 2025 S1", "GOMBA 2025 S2"]
 ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
