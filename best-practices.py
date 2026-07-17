@@ -544,7 +544,7 @@ with tab2:
     if contrib.empty:
         st.info("No contributions recorded yet.")
     else:
-        st.dataframe(contrib, use_container_width=True,
+        st.dataframe(contrib, width='stretch',
             column_config={
                 "Student":             st.column_config.TextColumn("🎓 Student"),
                 "Entries Added":       st.column_config.NumberColumn("➕ Added",  format="%d"),
@@ -568,7 +568,7 @@ with tab2:
             xaxis_title="Student", legend_title="Type",
             margin=dict(t=20, b=20),
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 
 
@@ -765,3 +765,5 @@ with tab4:
             if st.button(f"🔴 Reset all entries for {reset_class}", key="admin_reset_all_btn"):
                 st.session_state.confirm_reset = (reset_class, "ALL")
                 st.rerun()
+
+# end of file
